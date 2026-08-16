@@ -1,0 +1,12 @@
+{
+  "name": "kopie",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Native macOS clipboard manager (menu-bar, local-only).",
+  "scripts": {
+    "test": "swift test",
+    "dev": "./scripts/build.sh debug && open dist/Kopie.app",
+    "build": "./scripts/build.sh release",
+    "package": "./scripts/build.sh release && ./scripts/make-dmg.sh"
+  }
+}
