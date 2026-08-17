@@ -95,10 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Status item
 
-    private func applyVisibility() { statusItem.isVisible = visibleFromSettings() }
-    private func visibleFromSettings() -> Bool {
-        (UserDefaults.standard.object(forKey: "showMenuBarIcon") as? Bool) ?? true
-    }
+    private func applyVisibility() { statusItem.isVisible = SettingsStore.shared.showMenuBarIcon }
     @objc func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(nil) }
@@ -140,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // MARK: - Hotkey
 
     private func registerHotKey() {
-        let spec = UserDefaults.standard.hotKeySpec
+        let spec = SettingsStore.shared.hotkey
         _ = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
             MainActor.assumeIsolated { self?.showFromHotKey() }
         }
