@@ -357,7 +357,7 @@ func design14() {
         transform.translateX(by: c.x, yBy: c.y)
         transform.rotate(byRadians: angle)
         transform.translateX(by: -c.x, yBy: -c.y)
-        teeth.append(transform.transform(to: NSBezierPath(roundedRect: NSRect(x: c.x - 46, y: c.y + r - 40, width: 92, height: 120), xRadius: 20, yRadius: 20)))
+        teeth.append(transform.transform(NSBezierPath(roundedRect: NSRect(x: c.x - 46, y: c.y + r - 40, width: 92, height: 120), xRadius: 20, yRadius: 20)))
         transform.rotate(byRadians: -angle)
     }
     let grad = NSGradient(colors: [NSColor(calibratedRed: 0.62, green: 0.66, blue: 0.78, alpha: 1),

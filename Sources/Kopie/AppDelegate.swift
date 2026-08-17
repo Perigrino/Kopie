@@ -11,13 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var mainWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
+    /// Retains a hosting controller that captures the SwiftUI `openSettings`
+    /// action so the AppKit status menu can open the Settings scene natively.
+    private var settingsBridge: NSHostingController<SettingsBridge>?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Kopie")
-            button.image?.isTemplate = true
+            button.image = AppIcon.menuBarImage()
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -29,9 +31,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = NSHostingController(
             rootView: PopoverView().environmentObject(state))
 
+        // Capture the SwiftUI openSettings action for the AppKit status menu.
+        // The hosting view must live inside a real window (the status item's
+        // button) so onAppear fires at launch; an unattached hosting controller
+        // never appears and never captures the action.
+        let bridge = NSHostingController(rootView: SettingsBridge())
+        bridge.view.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
+        statusItem.button?.addSubview(bridge.view)
+        settingsBridge = bridge
+
         GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
-        GlobalActions.openSettings = { [weak self] in self?.showSettings() }
         GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
+        GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
 
         state.objectWillChange.sink { [weak self] _ in
             self?.applyVisibility()
@@ -44,11 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.registerHotKey() }
         }
-
         if state.showOnboarding {
             DispatchQueue.main.async { GlobalActions.openOnboarding?() }
         }
+
     }
+
 
     // MARK: - Windows
 
@@ -78,7 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             win.center()
             onboardingWindow = win
         }
+        // Activate so the welcome is frontmost and interactive (hover effects,
+        // clicks) even though the app stays accessory.
         onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func closeOnboardingIfDone() {
@@ -88,17 +103,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func showSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
     // MARK: - Status item
 
-    private func applyVisibility() { statusItem.isVisible = visibleFromSettings() }
-    private func visibleFromSettings() -> Bool {
-        (UserDefaults.standard.object(forKey: "showMenuBarIcon") as? Bool) ?? true
-    }
+    private func applyVisibility() { statusItem.isVisible = SettingsStore.shared.showMenuBarIcon }
     @objc func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(nil) }
@@ -128,21 +135,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Kopie", action: #selector(quitFromMenu), keyEquivalent: "q")
-        menu.items.forEach { $0.target = self }
+        menu.items.forEach { item in
+            if item.action != nil { item.target = self }
+        }
         return menu
     }
 
     @objc private func openFromMenu() { GlobalActions.openMain?() }
-    @objc private func openSettingsFromMenu() { showSettings() }
+    @objc private func openSettingsFromMenu() {
+        // Prefer the SwiftUI openSettings action captured at launch; fall back
+        // to the standard responder-chain action for the Settings scene.
+        if let open = GlobalActions.openSettings {
+            open()
+        } else {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
     @objc private func quitFromMenu() { NSApp.terminate(nil) }
 
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
+
+    func popoverDidShow(_ notification: Notification) {
+        // Re-capture the settings action if the status item was hidden at
+        // launch (its button — and the bridge — only exist once it's shown).
+        if GlobalActions.openSettings == nil,
+           let contentView = popover.contentViewController?.view {
+            let bridge = NSHostingController(rootView: SettingsBridge())
+            bridge.view.frame = .zero
+            contentView.addSubview(bridge.view)
+            settingsBridge = bridge
+        }
+    }
+
     func showFromHotKey() { togglePopover() }
 
     // MARK: - Hotkey
 
     private func registerHotKey() {
-        let spec = UserDefaults.standard.hotKeySpec
+        let spec = SettingsStore.shared.hotkey
         _ = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
             MainActor.assumeIsolated { self?.showFromHotKey() }
         }
