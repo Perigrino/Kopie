@@ -10,6 +10,8 @@ struct PopoverView: View {
     @State private var showClearConfirm = false
     @State private var showToast = false
     @State private var toastTask: Task<Void, Never>?
+    /// Flat index into `state.items` for keyboard navigation (nil = nothing highlighted).
+    @State private var highlightedIndex: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,8 +23,35 @@ struct PopoverView: View {
             bottomBar
         }
         .frame(width: 340)
-        .onAppear { state.refresh(); DispatchQueue.main.async { searchFocused = true } }
-        .onChange(of: state.searchText) { state.refresh() }
+        .onAppear {
+            state.refresh()
+            DispatchQueue.main.async { searchFocused = true }
+            highlightedIndex = state.items.isEmpty ? nil : 0
+        }
+        .onChange(of: state.searchText) {
+            state.refresh()
+            highlightedIndex = state.items.isEmpty ? nil : 0
+        }
+        .onKeyPress(.upArrow) { moveHighlight(-1); return .handled }
+        .onKeyPress(.downArrow) { moveHighlight(1); return .handled }
+        .onKeyPress(.return) { copyHighlighted(); return .handled }
+        .onKeyPress(.escape) {
+            if !state.searchText.isEmpty {
+                state.searchText = ""
+                state.refresh()
+            } else {
+                GlobalActions.closePopover?()
+            }
+            return .handled
+        }
+        .onKeyPress(.delete) {
+            if let idx = highlightedIndex, state.items.indices.contains(idx) {
+                state.remove(state.items[idx])
+                highlightedIndex = min(idx, state.items.count - 1)
+                return .handled
+            }
+            return .ignored
+        }
         .overlay(alignment: .bottom) {
             if showToast {
                 CopiedToast().padding(.bottom, 12)
@@ -39,7 +68,8 @@ struct PopoverView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 7) {
+            Image(nsImage: AppIcon.image(pointSize: 18))
             Text("Kopie").font(.headline)
             Spacer()
             Button {
@@ -81,26 +111,38 @@ struct PopoverView: View {
                 Button("Resume Monitoring") { state.startMonitoring() }.padding(.bottom, 12)
             }
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(groupByDay(state.items)) { group in
-                        Text(group.label)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 10).padding(.bottom, 4)
-                        ForEach(group.items) { item in
-                            HistoryRow(item: item,
-                                       thumbnail: state.thumbnail(for: item),
-                                       selectionMode: selectionMode,
-                                       isSelected: selectedIDs.contains(item.id),
-                                       onCopy: { copy(item) },
-                                       onRemove: { state.remove(item) },
-                                       onFavorite: { state.toggleFavorite(item) },
-                                       onToggleSelect: { toggleSelect(item.id) })
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(groupByDay(state.items)) { group in
+                            Text(group.label)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 10).padding(.bottom, 4)
+                            ForEach(Array(group.items.enumerated()), id: \.element.id) { _, item in
+                                let idx = state.items.firstIndex { $0.id == item.id } ?? 0
+                                HistoryRow(item: item,
+                                           thumbnail: state.thumbnail(for: item),
+                                           selectionMode: selectionMode,
+                                           isSelected: selectedIDs.contains(item.id),
+                                           isHighlighted: highlightedIndex == idx,
+                                           onCopy: { copy(item) },
+                                           onRemove: { state.remove(item) },
+                                           onFavorite: { state.toggleFavorite(item) },
+                                           onToggleSelect: { toggleSelect(item.id) })
+                                    .id(item.id)
+                            }
                         }
+                    }.padding(.horizontal, DS.pad).padding(.vertical, 8)
+                }
+                .frame(height: 360)
+                .onChange(of: highlightedIndex) {
+                    guard let i = highlightedIndex, state.items.indices.contains(i) else { return }
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        proxy.scrollTo(state.items[i].id, anchor: .center)
                     }
-                }.padding(.horizontal, DS.pad).padding(.vertical, 8)
-            }.frame(height: 360)
+                }
+            }
         }
     }
 
@@ -120,7 +162,7 @@ struct PopoverView: View {
                     .disabled(selectedIDs.isEmpty)
             } else {
                 Button("Open Kopie") { openMain() }
-                Button("Settings…") { showSettings() }
+                SettingsLink { Text("Settings…") }
                 Spacer()
                 Button("Select") { withAnimation { selectionMode = true } }
                     .disabled(state.items.isEmpty)
@@ -144,6 +186,27 @@ struct PopoverView: View {
         }
     }
 
+    private func copyHighlighted() {
+        if let i = highlightedIndex, state.items.indices.contains(i) {
+            copy(state.items[i])
+        } else if let first = state.items.first {
+            copy(first)
+        }
+    }
+
+    private func moveHighlight(_ delta: Int) {
+        guard !selectionMode else { return }
+        let count = state.items.count
+        guard count > 0 else { return }
+        let next: Int
+        if let i = highlightedIndex {
+            next = min(max(i + delta, 0), count - 1)
+        } else {
+            next = delta > 0 ? 0 : count - 1
+        }
+        highlightedIndex = next
+    }
+
     private func toggleSelect(_ id: Int64) {
         if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }
     }
@@ -159,8 +222,5 @@ struct PopoverView: View {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         GlobalActions.openMain?()
-    }
-    private func showSettings() {
-        GlobalActions.openSettings?()
     }
 }
