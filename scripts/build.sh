@@ -9,6 +9,23 @@ APP="dist/Kopie.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Kopie"
+# App icon. The chosen design is remembered in assets/icon-sources/selected.txt
+# (generate candidates with scripts/icon-sources/generate-icons-glass.swift, then set
+# selected.txt to the winning design, e.g. "design10"). If Kopie.icns hasn't been
+# produced yet, derive it from the selection.
+if [ ! -f "assets/icon-sources/Kopie.icns" ] && [ -f "assets/icon-sources/selected.txt" ]; then
+  DESIGN="$(cat assets/icon-sources/selected.txt)"
+  if [ -f "assets/icon-sources/$DESIGN.icns" ]; then
+    cp "assets/icon-sources/$DESIGN.icns" "assets/icon-sources/Kopie.icns"
+  fi
+fi
+if [ -f "assets/icon-sources/Kopie.icns" ]; then
+  cp "assets/icon-sources/Kopie.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
+# Monochrome menu-bar glyph (scripts/icon-sources/generate-menu-template.swift)
+if [ -f "assets/icon-sources/KopieMenuTemplate.png" ]; then
+  cp "assets/icon-sources/KopieMenuTemplate.png" "$APP/Contents/Resources/KopieMenuTemplate.png"
+fi
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -20,6 +37,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleExecutable</key><string>Kopie</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
