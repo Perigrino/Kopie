@@ -18,6 +18,22 @@ final class AppState: ObservableObject {
 
     static let pausedKey = "monitorPaused"
 
+    private static let thumbCache = NSCache<NSString, NSImage>()
+
+    /// Loads (and caches) the thumbnail for an image item, falling back to the full image.
+    func thumbnail(for item: ClipboardItem) -> NSImage? {
+        guard item.kind == .image else { return nil }
+        if let rel = item.thumbRelPath ?? item.imageRelPath {
+            let key = rel as NSString
+            if let cached = Self.thumbCache.object(forKey: key) { return cached }
+            if let img = writer.loadThumb(relPath: rel) {
+                Self.thumbCache.setObject(img, forKey: key)
+                return img
+            }
+        }
+        return nil
+    }
+
     init() {
         store = ClipStore()
         writer = DiskClipWriter()
@@ -74,6 +90,7 @@ final class AppState: ObservableObject {
     }
     func toggleFavorite(_ item: ClipboardItem) { store.setFavorite(item.id, !item.isFavorite); refresh() }
     func remove(_ item: ClipboardItem) { store.delete([item.id]); refresh() }
+    func remove(_ ids: [Int64]) { store.delete(ids); refresh() }
     func removeAll() { store.clearAll(); refresh() }
 
     func runRetentionPolicy(announce: Bool) {
