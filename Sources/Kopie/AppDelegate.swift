@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let state = AppState()
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private var hotKey: HotKeyManager?
+    private var mainWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -27,8 +28,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = NSHostingController(
             rootView: PopoverView().environmentObject(state))
 
-        state.objectWillChange.sink { [weak self] _ in self?.applyVisibility() }
-            .store(in: &cancellables)
+        GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
+        GlobalActions.openSettings = { [weak self] in self?.showSettings() }
+        GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
+
+        state.objectWillChange.sink { [weak self] _ in
+            self?.applyVisibility()
+            self?.closeOnboardingIfDone()
+        }
+        .store(in: &cancellables)
         applyVisibility()
 
         registerHotKey()
@@ -41,13 +49,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func registerHotKey() {
-        let spec = UserDefaults.standard.hotKeySpec
-        let ok = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
-            MainActor.assumeIsolated { self?.showFromHotKey() }
+    // MARK: - Windows
+
+    func showMainWindow() {
+        if mainWindow == nil {
+            let hosting = NSHostingController(rootView: MainView().environmentObject(state))
+            let win = NSWindow(contentViewController: hosting)
+            win.title = "Kopie"
+            win.setContentSize(NSSize(width: 900, height: 560))
+            win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            win.isReleasedWhenClosed = false
+            win.center()
+            mainWindow = win
         }
-        _ = ok
+        NSApp.setActivationPolicy(.regular)
+        mainWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
+
+    func showOnboarding() {
+        if onboardingWindow == nil {
+            let hosting = NSHostingController(rootView: OnboardingView().environmentObject(state))
+            let win = NSWindow(contentViewController: hosting)
+            win.title = "Welcome to Kopie"
+            win.styleMask = [.titled, .closable]
+            win.isReleasedWhenClosed = false
+            win.center()
+            onboardingWindow = win
+        }
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func closeOnboardingIfDone() {
+        if let win = onboardingWindow, !state.showOnboarding, win.isVisible {
+            win.close()
+            onboardingWindow = nil
+        }
+    }
+
+    private func showSettings() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Status item
+
     private func applyVisibility() { statusItem.isVisible = visibleFromSettings() }
     private func visibleFromSettings() -> Bool {
         (UserDefaults.standard.object(forKey: "showMenuBarIcon") as? Bool) ?? true
@@ -62,6 +108,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
-    // Hotkey + onboarding + notifications wired in Milestones 3/4; stubs now:
     func showFromHotKey() { togglePopover() }
+
+    // MARK: - Hotkey
+
+    private func registerHotKey() {
+        let spec = UserDefaults.standard.hotKeySpec
+        _ = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
+            MainActor.assumeIsolated { self?.showFromHotKey() }
+        }
+    }
 }

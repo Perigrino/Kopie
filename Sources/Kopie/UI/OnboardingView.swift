@@ -3,6 +3,7 @@ import KopieCore
 
 struct OnboardingView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var step = 0
     @State private var retention = RetentionPeriod.daySeven
 
@@ -40,8 +41,10 @@ struct OnboardingView: View {
                 Spacer()
                 Button(step == 4 ? "Get Started" : "Continue") {
                     withAnimation {
-                        if step == 4 { state.finishOnboarding(retention: retention) }
-                        else { step += 1 }
+                        if step == 4 {
+                            state.finishOnboarding(retention: retention)
+                            dismiss()
+                        } else { step += 1 }
                     }
                 }
                 .buttonStyle(.borderedProminent)

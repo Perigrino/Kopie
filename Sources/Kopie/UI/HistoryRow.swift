@@ -12,6 +12,8 @@ struct HistoryRow: View {
     var onRemove: () -> Void
     var onFavorite: () -> Void
     var onToggleSelect: (() -> Void)? = nil
+    /// When false, tapping the row does not copy (lets a containing List handle selection).
+    var copyOnTap: Bool = true
     @State private var hovering = false
 
     var body: some View {
@@ -46,8 +48,23 @@ struct HistoryRow: View {
                     in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture {
-            selectionMode ? (onToggleSelect?() ?? onCopy()) : onCopy()
+        .modifier(TapAction(enabled: selectionMode || copyOnTap) {
+            if selectionMode { onToggleSelect?() ?? () }
+            else { onCopy() }
+        })
+    }
+
+    /// Applies onTapGesture only when enabled, so a plain row can participate
+    /// in List selection instead of swallowing the click.
+    private struct TapAction: ViewModifier {
+        let enabled: Bool
+        let action: () -> Void
+        func body(content: Content) -> some View {
+            if enabled {
+                content.onTapGesture(perform: action)
+            } else {
+                content
+            }
         }
     }
 
