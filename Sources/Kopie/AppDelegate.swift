@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
             self?.registerHotKey()
         }
+
+        if state.showOnboarding {
+            DispatchQueue.main.async { GlobalActions.openOnboarding?() }
+        }
     }
 
     private func registerHotKey() {

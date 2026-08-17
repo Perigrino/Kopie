@@ -14,6 +14,11 @@ struct KopieApp: App {
                 .background(WindowProxy())
         }
         .defaultSize(width: 900, height: 560)
+        Window("Welcome to Kopie", id: "onboarding") {
+            OnboardingView().environmentObject(appDelegate.state)
+                .background(WindowProxy())
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -28,6 +33,7 @@ private struct WindowProxy: View {
             .onAppear {
                 GlobalActions.openMain = { openWindow(id: "main") }
                 GlobalActions.openSettings = { openSettings() }
+                GlobalActions.openOnboarding = { openWindow(id: "onboarding") }
             }
     }
 }
@@ -37,4 +43,5 @@ private struct WindowProxy: View {
 enum GlobalActions {
     static var openMain: (() -> Void)?
     static var openSettings: (() -> Void)?
+    static var openOnboarding: (() -> Void)?
 }
