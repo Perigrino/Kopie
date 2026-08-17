@@ -28,6 +28,8 @@ enum SelfTest {
             for it in store.query(.init(limit: 50)) {
                 print("\(it.id) \(it.kind.rawValue) \(it.createdAt.timeIntervalSince1970) \(it.preview)")
             }
+        case "--smoke-count":
+            print("COUNT \(store.count())")
         case "--smoke-purge":
             let days = args.count > 1 ? Double(args[1]) ?? 7 : 7
             let delFav = (args.count > 2 && args[2] == "fav")
