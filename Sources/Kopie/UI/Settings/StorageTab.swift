@@ -8,13 +8,21 @@ struct SettingsStorageTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Group {
+            HStack(alignment: .firstTextBaseline) {
                 Text("Clipboard Items").font(.headline)
-                Text("\(stats.count)").font(.largeTitle.monospacedDigit())
-                Text("Storage Used").font(.headline).padding(.top, 8)
-                Text(ByteCountFormatter.string(fromByteCount: stats.bytes, countStyle: .file))
-                    .font(.largeTitle.monospacedDigit())
+                Spacer()
+                Button {
+                    withAnimation { stats = state.storageStats() }
+                } label: {
+                    Image(systemName: "arrow.clockwise").font(.caption)
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+                .help("Refresh stats")
             }
+            Text("\(stats.count)").font(.largeTitle.monospacedDigit())
+            Text("Storage Used").font(.headline).padding(.top, 8)
+            Text(ByteCountFormatter.string(fromByteCount: stats.bytes, countStyle: .file))
+                .font(.largeTitle.monospacedDigit())
             if let err = state.storageError {
                 Label("Storage error: \(err)", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.red)
