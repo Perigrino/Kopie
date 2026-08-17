@@ -5,7 +5,10 @@ import Foundation
 public final class ClipStore {
     private let db: Database
     private let baseDir: URL
+    private let crypto: HistoryCrypto?
     public private(set) var bootstrapError: String?
+    /// True when at-rest encryption is active (Keychain key available).
+    public private(set) var encryptionAvailable: Bool
 
     private static let schemaSQL = """
     CREATE TABLE IF NOT EXISTS clipboard_items(
@@ -26,7 +29,10 @@ public final class ClipStore {
     CREATE INDEX IF NOT EXISTS idx_ci_hash ON clipboard_items(content_hash);
     """
 
-    public init(dir: URL? = nil) {
+    /// - Parameter crypto: encryption for at-rest text. `nil` auto-selects the
+    ///   Keychain-backed key and silently degrades to plaintext if the Keychain
+    ///   is unavailable (legacy rows and existing files remain readable).
+    public init(dir: URL? = nil, crypto: HistoryCrypto? = nil) {
         let base = dir ?? StoragePaths.baseDir()
         baseDir = base
         let fm = FileManager.default
@@ -44,15 +50,47 @@ public final class ClipStore {
         }
         self.db = handle
         self.bootstrapError = err
+        self.crypto = crypto ?? (try? KeychainHistoryCrypto())
+        self.encryptionAvailable = self.crypto != nil
+        migrateLegacyPlaintext()
     }
 
-    public init(database: Database, baseDir: URL) {
+    public init(database: Database, baseDir: URL, crypto: HistoryCrypto? = nil) {
         self.db = database
         self.baseDir = baseDir
+        self.crypto = crypto ?? (try? KeychainHistoryCrypto())
+        self.encryptionAvailable = self.crypto != nil
+        migrateLegacyPlaintext()
     }
 
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
     private func date(_ ms: Int64) -> Date { Date(timeIntervalSince1970: Double(ms) / 1000) }
+
+    /// Encrypts text before storage when a key is available.
+    private func storedText(_ t: String) -> String {
+        guard let c = crypto, let enc = try? AtRestText.encode(t, crypto: c) else { return t }
+        return enc
+    }
+
+    /// Decrypts stored text, passing legacy plaintext through untouched.
+    private func plainText(_ t: String) -> String {
+        guard let c = crypto else { return t }
+        return AtRestText.decode(t, crypto: c)
+    }
+
+    /// Converts pre-encryption plaintext rows in place. Idempotent: rows are
+    /// already marked `enc:v1:` after the first run, so this is a no-op.
+    private func migrateLegacyPlaintext() {
+        guard crypto != nil else { return }
+        let rows = (try? db.rows(
+            "SELECT id, text_content FROM clipboard_items WHERE text_content IS NOT NULL AND text_content NOT LIKE 'enc:v1:%'",
+            [])) ?? []
+        for r in rows {
+            guard let id = r[0] as? Int64, let t = r[1] as? String else { continue }
+            _ = try? db.run("UPDATE clipboard_items SET text_content = ? WHERE id = ?",
+                            [storedText(t), id])
+        }
+    }
 
     @discardableResult
     public func insert(_ item: ClipboardItem) -> Int64 {
@@ -60,7 +98,7 @@ public final class ClipStore {
             _ = try db.run(
         "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
-         item.contentHash, item.text, item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
+         item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
          item.width.flatMap(Int64.init), item.height.flatMap(Int64.init)])
             return db.scalarInt64("SELECT last_insert_rowid()")
         } catch {
@@ -80,7 +118,7 @@ public final class ClipStore {
             lastAccessedAt: date(r[3] as? Int64 ?? 0),
             isFavorite: (r[4] as? Int64) != 0,
             contentHash: r[5] as? String ?? "",
-            text: r[6] as? String,
+            text: (r[6] as? String).map(plainText),
             imageRelPath: r[7] as? String,
             thumbRelPath: r[8] as? String,
             fileSize: Int(r[9] as? Int64 ?? 0),
@@ -90,7 +128,6 @@ public final class ClipStore {
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
         var whereC = [String](); var params: [Any?] = []
-        if !f.textQuery.isEmpty { whereC.append("text_content LIKE ?"); params.append("%" + f.textQuery + "%") }
         if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
         if f.favoritesOnly { whereC.append("is_favorite = 1") }
         if let b = f.bucket {
@@ -107,10 +144,19 @@ public final class ClipStore {
             }
         }
         let whereSQL = whereC.isEmpty ? "" : "WHERE " + whereC.joined(separator: " AND ")
+        // Text search runs in memory after decryption — SQL LIKE can't match
+        // ciphertext. Fetch a generous window when searching so older matches
+        // aren't cut off by the row limit.
+        let limit = f.textQuery.isEmpty ? f.limit : max(f.limit, 1000)
         let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY last_accessed_at DESC, id DESC LIMIT ?"
-        params.append(f.limit)
+        params.append(limit)
         let rows = (try? db.rows(sql, params)) ?? []
-        return rows.map { map($0) }
+        var items = rows.map { map($0) }
+        if !f.textQuery.isEmpty {
+            let q = f.textQuery
+            items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(q) }
+        }
+        return items
     }
 
     public func get(_ id: Int64) -> ClipboardItem? {
@@ -183,14 +229,15 @@ public final class ClipStore {
     }
 
     /// Non-favorite text rows for one-time inspection (e.g. pre-fix image-URL
-    /// captures). Favorites are never touched by cleanups.
+    /// captures). Favorites are never touched by cleanups. Text is decrypted
+    /// so the classifier sees the plain content.
     public func textItemsForCleanup() -> [(id: Int64, text: String)] {
         let rows = (try? db.rows(
             "SELECT id, text_content FROM clipboard_items WHERE kind = 'text' AND is_favorite = 0 AND text_content IS NOT NULL",
             [])) ?? []
         return rows.compactMap { r in
             guard let id = r[0] as? Int64, let t = r[1] as? String else { return nil }
-            return (id, t)
+            return (id, plainText(t))
         }
     }
 

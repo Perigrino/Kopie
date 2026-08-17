@@ -34,6 +34,19 @@ final class AppState: ObservableObject {
         return nil
     }
 
+    /// Loads (and caches) the full-resolution image for an image item, so the
+    /// details panel shows the actual copied pixels instead of the 256px thumb.
+    func fullImage(for item: ClipboardItem) -> NSImage? {
+        guard item.kind == .image, let rel = item.imageRelPath else { return nil }
+        let key = ("full:" + rel) as NSString
+        if let cached = Self.thumbCache.object(forKey: key) { return cached }
+        if let img = writer.loadThumb(relPath: rel) {
+            Self.thumbCache.setObject(img, forKey: key)
+            return img
+        }
+        return nil
+    }
+
     init() {
         store = ClipStore()
         writer = DiskClipWriter()

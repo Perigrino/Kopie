@@ -12,6 +12,8 @@ struct PopoverView: View {
     @State private var toastTask: Task<Void, Never>?
     /// Flat index into `state.items` for keyboard navigation (nil = nothing highlighted).
     @State private var highlightedIndex: Int?
+    /// Item whose image is being previewed (hover or keyboard highlight).
+    @State private var previewID: Int64?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -129,21 +131,57 @@ struct PopoverView: View {
                                            onCopy: { copy(item) },
                                            onRemove: { state.remove(item) },
                                            onFavorite: { state.toggleFavorite(item) },
-                                           onToggleSelect: { toggleSelect(item.id) })
+                                           onToggleSelect: { toggleSelect(item.id) },
+                                           onHoverChange: { hovering in
+                                               previewID = hovering ? item.id : (previewID == item.id ? nil : previewID)
+                                           })
                                     .id(item.id)
                             }
                         }
                     }.padding(.horizontal, DS.pad).padding(.vertical, 8)
                 }
                 .frame(height: 360)
+                .overlay(alignment: .top) { imagePreview }
                 .onChange(of: highlightedIndex) {
                     guard let i = highlightedIndex, state.items.indices.contains(i) else { return }
+                    previewID = state.items[i].kind == .image ? state.items[i].id : nil
                     withAnimation(.easeInOut(duration: 0.15)) {
                         proxy.scrollTo(state.items[i].id, anchor: .center)
                     }
                 }
             }
         }
+    }
+
+    /// A large preview of the image under the pointer or keyboard highlight.
+    /// Floats over the list (not in flow) so the cursor never leaves the row it
+    /// is hovering, avoiding a hover↔layout flicker loop. Non-interactive so
+    /// mouse events pass through to the row underneath.
+    @ViewBuilder private var imagePreview: some View {
+        if let item = previewItem, item.kind == .image, let img = state.thumbnail(for: item) {
+            VStack(spacing: 4) {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 304, maxHeight: 170)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text("\(item.width ?? 0) × \(item.height ?? 0)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+            .padding(.top, 6)
+            .transition(.opacity)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var previewItem: ClipboardItem? {
+        if let id = previewID, let item = state.items.first(where: { $0.id == id }), item.kind == .image {
+            return item
+        }
+        return nil
     }
 
     private var bottomBar: some View {
