@@ -1,39 +1,18 @@
 import SwiftUI
 import AppKit
 import Carbon
+import KopieCore
 
-/// Small value describing a global shortcut (Carbon key code + modifier flags).
-struct HotKeySpec: Codable, Equatable {
-    var keyCode: UInt32
-    var modifiers: UInt32
-
-    static let `default` = HotKeySpec(keyCode: 9, modifiers: UInt32(cmdKey | shiftKey)) // ⌘⇧V
-
+extension HotKeySpec {
+    /// Human-readable label, e.g. "⌘⇧V".
     var label: String {
         var parts: [String] = []
-        if modifiers & UInt32(cmdKey) != 0 { parts.append("⌘") }
-        if modifiers & UInt32(shiftKey) != 0 { parts.append("⇧") }
-        if modifiers & UInt32(optionKey) != 0 { parts.append("⌥") }
-        if modifiers & UInt32(controlKey) != 0 { parts.append("⌃") }
+        if modifiers & 0x0100 != 0 { parts.append("⌘") }   // cmdKey
+        if modifiers & 0x0200 != 0 { parts.append("⇧") }   // shiftKey
+        if modifiers & 0x0800 != 0 { parts.append("⌥") }   // optionKey
+        if modifiers & 0x1000 != 0 { parts.append("⌃") }   // controlKey
         parts.append(HotKeyRecorder.keyName(keyCode))
         return parts.joined()
-    }
-}
-
-extension UserDefaults {
-    var hotKeySpec: HotKeySpec {
-        get {
-            guard let data = data(forKey: "hotkey"),
-                  let spec = try? JSONDecoder().decode(HotKeySpec.self, from: data) else {
-                return .default
-            }
-            return spec
-        }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                set(data, forKey: "hotkey")
-            }
-        }
     }
 }
 
@@ -57,7 +36,7 @@ struct HotKeyRecorder: View {
                 }
             }
         } label: {
-            Text(recording ? "Press a key… (Esc to cancel)" : (UserDefaults.standard.hotKeySpec.label))
+            Text(recording ? "Press a key… (Esc to cancel)" : SettingsStore.shared.hotkey.label)
                 .font(.body.monospacedDigit())
                 .frame(minWidth: 140)
         }
@@ -71,17 +50,17 @@ struct HotKeyRecorder: View {
 
     private func handle(_ event: NSEvent) {
         let spec = HotKeySpec(keyCode: UInt32(event.keyCode), modifiers: carbonModifiers(event.modifierFlags))
-        UserDefaults.standard.hotKeySpec = spec
+        SettingsStore.shared.hotkey = spec
         stopRecording()
         NotificationCenter.default.post(name: .kopieHotKeyChanged, object: nil)
     }
 
     private func carbonModifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
         var mods: UInt32 = 0
-        if flags.contains(.command) { mods |= UInt32(cmdKey) }
-        if flags.contains(.shift) { mods |= UInt32(shiftKey) }
-        if flags.contains(.option) { mods |= UInt32(optionKey) }
-        if flags.contains(.control) { mods |= UInt32(controlKey) }
+        if flags.contains(.command) { mods |= 0x0100 }
+        if flags.contains(.shift) { mods |= 0x0200 }
+        if flags.contains(.option) { mods |= 0x0800 }
+        if flags.contains(.control) { mods |= 0x1000 }
         return mods
     }
 
