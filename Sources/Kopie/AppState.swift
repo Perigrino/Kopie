@@ -8,6 +8,12 @@ final class AppState: ObservableObject {
     @Published var searchText: String = ""
     @Published var isPaused: Bool = false
     @Published var showOnboarding: Bool = false
+    @Published var excludedApps: [ExcludedApp] = []
+
+    struct ExcludedApp: Identifiable, Equatable, Codable {
+        let id: String        // bundle ID
+        var name: String
+    }
     let store: ClipStore
     private let writer: DiskClipWriter
     private let pipeline: CapturePipeline
@@ -49,6 +55,7 @@ final class AppState: ObservableObject {
         self.pipeline = pipeline; self.restoreSVC = restore; self.monitor = monitor
         self.job = RetentionJob(store: store)
         self.isPaused = defaults.bool(forKey: Self.pausedKey)
+        self.excludedApps = Self.loadExcludedApps()
 
         restore.onAboutToWrite = { [weak self] in self?.monitor.beginSuppression() }
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged),
@@ -71,6 +78,65 @@ final class AppState: ObservableObject {
             ignoreDuplicates: d.object(forKey: "ignoreDuplicates") as? Bool ?? true,
             maxItems: d.object(forKey: "maxItems") as? Int ?? 1000,
             excludedAppIDs: Set(d.stringArray(forKey: "excludedAppIDs") ?? []))
+    }
+
+    private static func loadExcludedApps() -> [ExcludedApp] {
+        let d = UserDefaults.standard
+        guard let data = d.data(forKey: "excludedApps"),
+              let list = try? JSONDecoder().decode([ExcludedApp].self, from: data) else {
+            // backfill from legacy string array
+            return (d.stringArray(forKey: "excludedAppIDs") ?? []).map { ExcludedApp(id: $0, name: $0) }
+        }
+        return list
+    }
+
+    private func persistExcludedApps() {
+        UserDefaults.standard.set(try? JSONEncoder().encode(excludedApps), forKey: "excludedApps")
+        UserDefaults.standard.set(excludedApps.map { $0.id }, forKey: "excludedAppIDs")
+    }
+
+    func addExcludedApp(bundleID: String, name: String) {
+        guard !bundleID.isEmpty, !excludedApps.contains(where: { $0.id == bundleID }) else { return }
+        excludedApps.append(ExcludedApp(id: bundleID, name: name))
+        persistExcludedApps()
+        refresh()
+    }
+
+    func removeExcludedApp(id: String) {
+        excludedApps.removeAll { $0.id == id }
+        persistExcludedApps()
+        refresh()
+    }
+
+    func storageStats() -> (count: Int64, bytes: Int64) {
+        (store.count(), store.bytesUsed())
+    }
+
+    var storageError: String? { store.bootstrapError }
+
+    /// Clears regenerable cache (in-memory thumbnails + thumbnail files).
+    func clearCache() {
+        Self.thumbCache.removeAllObjects()
+        let fm = FileManager.default
+        for dir in [StoragePaths.thumbsDir()] {
+            if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                for f in files { try? fm.removeItem(at: f) }
+            }
+        }
+        refresh()
+    }
+
+    /// Removes every clipboard item and all stored image/thumbnail files.
+    func clearAllData() {
+        store.clearAll()
+        Self.thumbCache.removeAllObjects()
+        let fm = FileManager.default
+        for dir in [StoragePaths.imagesDir(), StoragePaths.thumbsDir()] {
+            if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                for f in files { try? fm.removeItem(at: f) }
+            }
+        }
+        refresh()
     }
 
     func refresh(filter: QueryFilter? = nil) {
