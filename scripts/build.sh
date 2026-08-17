@@ -57,7 +57,7 @@ SIGNER="${KOPIE_SIGN_IDENTITY:-}"
 if [ -n "$SIGNER" ]; then
   codesign --force --sign "$SIGNER" --entitlements "$ENT_FILE" --options runtime "$APP"
 else
-  codesign --force --sign - --entitlements "$ENT_FILE" "$APP"
+  codesign --force --sign - --entitlements "$ENT_FILE" --options runtime "$APP"
 fi
 rm -rf "$(dirname "$ENT_FILE")"
 codesign --verify --verbose=2 "$APP"

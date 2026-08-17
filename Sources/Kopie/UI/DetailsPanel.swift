@@ -44,9 +44,9 @@ struct DetailsPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else if let thumb = state.thumbnail(for: item) {
+        } else if let img = state.fullImage(for: item) ?? state.thumbnail(for: item) {
             ScrollView([.horizontal, .vertical]) {
-                Image(nsImage: thumb)
+                Image(nsImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity)

@@ -74,4 +74,63 @@ final class ClipStoreTests: XCTestCase {
         XCTAssertEqual(remaining.count, 4)
         XCTAssertTrue(remaining.contains(ids[0]))
     }
+
+    // MARK: - At-rest encryption
+
+    func test_textEncryptedAtRestAndDecryptedOnRead() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        _ = s.insert(item(.text, "top secret password"))
+
+        // Raw SQL must carry the marker and never contain the plaintext.
+        let db = try Database(path: tmp.appendingPathComponent("kopie.db").path)
+        let stored = (try db.rows("SELECT text_content FROM clipboard_items", [])).first?.first as? String
+        XCTAssertNotNil(stored)
+        XCTAssertTrue(AtRestText.isEncrypted(stored!))
+        XCTAssertFalse(stored!.contains("top secret password"))
+
+        // Reads return the plaintext.
+        XCTAssertEqual(s.get(1)?.text, "top secret password")
+        XCTAssertEqual(s.query(.init()).first?.text, "top secret password")
+    }
+
+    func test_searchWorksOnEncryptedText() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        _ = s.insert(item(.text, "Apple Pie Recipe"))
+        _ = s.insert(item(.text, "banana bread"))
+        XCTAssertEqual(s.query(.init(textQuery: "apple")).count, 1)
+        XCTAssertEqual(s.query(.init(textQuery: "apple")).first?.text, "Apple Pie Recipe")
+        XCTAssertEqual(s.query(.init(textQuery: "recipe")).first?.text, "Apple Pie Recipe")
+    }
+
+    func test_legacyPlaintextRowMigratedOnOpen() throws {
+        // Seed a plaintext row directly (pre-encryption era), then open the
+        // store with a crypto key — the row must stay readable and be
+        // converted to encrypted in place.
+        let db = try Database(path: tmp.appendingPathComponent("kopie.db").path)
+        try db.exec("""
+        CREATE TABLE IF NOT EXISTS clipboard_items(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          last_accessed_at INTEGER NOT NULL,
+          is_favorite INTEGER NOT NULL DEFAULT 0,
+          content_hash TEXT NOT NULL,
+          text_content TEXT,
+          image_rel_path TEXT,
+          thumb_rel_path TEXT,
+          file_size INTEGER NOT NULL DEFAULT 0,
+          width INTEGER,
+          height INTEGER)
+        """)
+        _ = try db.run("""
+        INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content)
+        VALUES('text',0,0,0,'h','old plaintext')
+        """, [])
+
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        XCTAssertEqual(s.get(1)?.text, "old plaintext")
+
+        let stored = (try db.rows("SELECT text_content FROM clipboard_items", [])).first?.first as? String
+        XCTAssertTrue(AtRestText.isEncrypted(stored!))
+    }
 }

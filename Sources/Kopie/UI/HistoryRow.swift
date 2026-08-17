@@ -14,6 +14,8 @@ struct HistoryRow: View {
     var onToggleSelect: (() -> Void)? = nil
     /// When false, tapping the row does not copy (lets a containing List handle selection).
     var copyOnTap: Bool = true
+    /// Notifies when the pointer enters/leaves the row (used for popover previews).
+    var onHoverChange: ((Bool) -> Void)? = nil
     @State private var hovering = false
 
     var body: some View {
@@ -54,7 +56,7 @@ struct HistoryRow: View {
             }
         }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
+        .onHover { hovering = $0; onHoverChange?(hovering) }
         .modifier(TapAction(enabled: selectionMode || copyOnTap) {
             if selectionMode { onToggleSelect?() ?? () }
             else { onCopy() }
