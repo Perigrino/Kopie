@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kopie — landing</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(168deg, #fdfbff 0%, #f6efff 38%, #fdf0f6 72%, #f5f8ff 100%);
+    background-size: 200% 200%;
+    animation: bgBreath 30s ease-in-out infinite alternate;
+    color: #23233a;
+    overflow-x: hidden;
+    display: flex; flex-direction: column; justify-content: center; min-height: 100vh;
+  }
+  @keyframes bgBreath { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+
+  /* ---------- Ambient background ---------- */
+  .ambient { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+  .layer { position: absolute; inset: 0; will-change: transform; }
+
+  .orb { position: absolute; border-radius: 50%; filter: blur(74px); opacity: .55; }
+  .orb.a { width: 400px; height: 400px; top: -110px; left: -90px;
+           background: radial-gradient(circle, rgba(255,196,214,.85), rgba(255,196,214,0) 70%);
+           animation: driftA 27s ease-in-out infinite alternate; }
+  .orb.b { width: 360px; height: 360px; top: -70px; right: -80px;
+           background: radial-gradient(circle, rgba(196,181,255,.85), rgba(196,181,255,0) 70%);
+           animation: driftB 31s ease-in-out infinite alternate; }
+  .orb.c { width: 460px; height: 460px; bottom: -160px; left: -120px;
+           background: radial-gradient(circle, rgba(255,170,198,.7), rgba(255,170,198,0) 70%);
+           animation: driftC 35s ease-in-out infinite alternate; }
+  .orb.d { width: 420px; height: 420px; bottom: -150px; right: -110px;
+           background: radial-gradient(circle, rgba(170,158,255,.7), rgba(170,158,255,0) 70%);
+           animation: driftD 29s ease-in-out infinite alternate; }
+  @keyframes driftA { from { transform: translate(0,0) scale(1); } to { transform: translate(-36px, 26px) scale(1.08); } }
+  @keyframes driftB { from { transform: translate(0,0) scale(1); } to { transform: translate(30px, -22px) scale(1.1); } }
+  @keyframes driftC { from { transform: translate(0,0) scale(1); } to { transform: translate(26px, -18px) scale(1.06); } }
+  @keyframes driftD { from { transform: translate(0,0) scale(1); } to { transform: translate(-28px, 16px) scale(1.09); } }
+
+  .spark { position: absolute; opacity: 0; animation: twinkle 6s ease-in-out infinite; }
+  @keyframes twinkle { 0%, 100% { opacity: .15; transform: scale(.85) rotate(0deg); }
+                       50% { opacity: .85; transform: scale(1.05) rotate(8deg); } }
+
+  .curve { position: absolute; fill: none; stroke: rgba(168,150,220,.32); stroke-width: 1.4;
+           stroke-linecap: round; animation: sway 22s ease-in-out infinite alternate; }
+  @keyframes sway { from { transform: translateX(-14px); } to { transform: translateX(16px); } }
+
+  .dots { position: absolute;
+          background-image: radial-gradient(rgba(152,132,205,.30) 1.3px, transparent 1.4px);
+          background-size: 20px 20px;
+          animation: dotsDrift 26s ease-in-out infinite alternate; }
+  @keyframes dotsDrift { from { opacity: .5; transform: translateY(0); } to { opacity: .8; transform: translateY(-12px); } }
+
+  .particle { position: absolute; border-radius: 50%; opacity: 0;
+              animation: rise linear infinite; }
+  @keyframes rise {
+    0%   { transform: translateY(24vh) translateX(0); opacity: 0; }
+    12%  { opacity: .5; }
+    70%  { opacity: .35; }
+    100% { transform: translateY(-70vh) translateX(14px); opacity: 0; }
+  }
+
+  /* ---------- Hero ---------- */
+  .hero { position: relative; z-index: 1; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; text-align: center;
+          padding: 32px 24px 0; }
+  .icon-wrap { position: relative; }
+  .glow { position: absolute; left: 50%; top: 50%; width: 170px; height: 170px;
+          transform: translate(-50%, -50%);
+          background: radial-gradient(circle, rgba(255,168,190,.38), transparent 66%);
+          animation: glowPulse 6.5s ease-in-out infinite; }
+  @keyframes glowPulse { 0%, 100% { opacity: .55; transform: translate(-50%,-50%) scale(1); }
+                         50% { opacity: .95; transform: translate(-50%,-50%) scale(1.12); } }
+  .hero-icon { position: relative; width: 84px; height: 84px; border-radius: 26%; overflow: hidden;
+               box-shadow: 0 16px 34px rgba(255,120,140,.34);
+               transition: transform .7s cubic-bezier(.22,.9,.36,1); }
+  .hero-icon img { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+                   animation: heroIconIn 1.9s cubic-bezier(.34,1.56,.64,1) .3s forwards; }
+  .hero-icon .liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 0%;
+                       background: linear-gradient(180deg, rgba(255,255,255,.4), rgba(255,255,255,.92));
+                       animation: heroFill 1.8s ease-in-out .3s forwards; }
+  .hero-icon .shine { position: absolute; left: -60%; top: -10%; width: 42%; height: 120%;
+                      background: linear-gradient(105deg, transparent, rgba(255,255,255,.62), transparent);
+                      animation: heroShine 6.8s ease-in-out infinite 2.4s; }
+  @keyframes heroFill { 0% { height: 0%; } 60% { height: 100%; } 100% { height: 100%; } }
+  @keyframes heroIconIn { from { transform: scale(.84); opacity: .35; } to { transform: scale(1); opacity: 1; } }
+  @keyframes heroShine { 0%, 10% { left: -60%; } 24% { left: 135%; } 100% { left: 135%; } }
+  .icon-wrap:hover .hero-icon { transform: scale(1.035); }
+  /* Matching shimmer ring on the hero icon. */
+  .hero-icon::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px;
+    background: linear-gradient(115deg, transparent 25%, #ffb0c4 46%, #d6b8ff 52%, #ffb0c4 58%, transparent 75%);
+    background-size: 300% 100%;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0; transition: opacity .6s ease;
+    animation: shimmer 3.2s linear infinite;
+    pointer-events: none; }
+  .hero-icon:hover::before { opacity: 1; }
+
+  .greeting { margin-top: 12px; font-size: 13.5px; font-weight: 650; color: #ff7d8f; }
+  /* Option 8 — "Kopie" springs in letter by letter after the liquid fill. */
+  .word { margin-top: 6px; font-size: 48px; font-weight: 850; letter-spacing: -.01em; color: #1f2030; }
+  .word span { display: inline-block; opacity: 0;
+               animation: letterIn .8s cubic-bezier(.34,1.56,.64,1) forwards; }
+  .word span:nth-child(1) { animation-delay: 1.5s; }
+  .word span:nth-child(2) { animation-delay: 1.6s; }
+  .word span:nth-child(3) { animation-delay: 1.7s; }
+  .word span:nth-child(4) { animation-delay: 1.8s; }
+  .word span:nth-child(5) { animation-delay: 1.9s; }
+  @keyframes letterIn {
+    0%   { transform: translateY(32px) scale(.4); opacity: 0; }
+    55%  { transform: translateY(-8px) scale(1.05); opacity: 1; }
+    72%  { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .sub { margin-top: 6px; font-size: 16.5px; font-weight: 500; color: #5c5c70; }
+
+  /* Entrance choreography. */
+  .icon-wrap { opacity: 0; animation: fadeUp .8s ease-out .15s forwards; }
+  .greeting { opacity: 0; animation: fadeUp .8s ease-out .55s forwards; }
+  .sub { opacity: 0; animation: fadeUp .9s ease-out 2.35s forwards; }
+  .sub2 { opacity: 0; animation: fadeUp .9s ease-out 2.5s forwards; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Description under the tagline. */
+  .sub2 { margin-top: 4px; font-size: 11.5px; font-weight: 500; color: #76768a; white-space: nowrap; }
+  @keyframes shimmer { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
+
+  /* ---------- Reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    body { animation: none; }
+    .orb, .spark, .curve, .dots, .particle, .glow { animation: none !important; }
+    .hero-icon .liquid, .hero-icon .shine, .hero-icon img { animation: none !important; }
+    .hero-icon img { opacity: 1 !important; transform: none !important; }
+    .icon-wrap, .greeting, .sub, .sub2, .word span {
+      animation: none !important; opacity: 1 !important; transform: none !important; }
+    .hero-icon::before { display: none; }
+    .hero-icon { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <div class="layer" data-depth="1.0">
+      <div class="orb a"></div><div class="orb b"></div>
+      <div class="orb c"></div><div class="orb d"></div>
+    </div>
+    <div class="layer" data-depth="0.55">
+      <svg class="spark" width="20" height="20" viewBox="0 0 24 24" style="top:16%; left:12%; animation-delay:0s;">
+        <path d="M12 0 L14.6 9.4 L24 12 L14.6 14.6 L12 24 L9.4 14.6 L0 12 L9.4 9.4 Z" fill="#f6a8bd"/>
+      </svg>
+      <svg class="spark" width="14" height="14" viewBox="0 0 24 24" style="top:24%; right:14%; animation-delay:1.4s;">
+        <path d="M12 0 L14.6 9.4 L24 12 L14.6 14.6 L12 24 L9.4 14.6 L0 12 L9.4 9.4 Z" fill="#b9a6f7"/>
+      </svg>
+      <svg class="spark" width="18" height="18" viewBox="0 0 24 24" style="top:60%; left:8%; animation-delay:.7s;">
+        <path d="M12 0 L14.6 9.4 L24 12 L14.6 14.6 L12 24 L9.4 14.6 L0 12 L9.4 9.4 Z" fill="#f6a8bd"/>
+      </svg>
+      <svg class="spark" width="12" height="12" viewBox="0 0 24 24" style="top:70%; right:9%; animation-delay:2.2s;">
+        <path d="M12 0 L14.6 9.4 L24 12 L14.6 14.6 L12 24 L9.4 14.6 L0 12 L9.4 9.4 Z" fill="#a9c7f7"/>
+      </svg>
+      <svg class="spark" width="16" height="16" viewBox="0 0 24 24" style="top:34%; left:44%; animation-delay:3s;">
+        <path d="M12 0 L14.6 9.4 L24 12 L14.6 14.6 L12 24 L9.4 14.6 L0 12 L9.4 9.4 Z" fill="#f6a8bd"/>
+      </svg>
+    </div>
+    <div class="layer" data-depth="0.35">
+      <svg class="curve" width="420" height="90" viewBox="0 0 420 90" style="top:22%; left:-40px;">
+        <path d="M0 60 C 70 10, 140 90, 220 50 S 360 10, 430 40"/>
+      </svg>
+      <svg class="curve" width="380" height="80" viewBox="0 0 380 80" style="top:58%; right:-60px; animation-delay:2.5s;">
+        <path d="M0 30 C 60 70, 130 0, 210 40 S 340 70, 390 20"/>
+      </svg>
+    </div>
+    <div class="layer" data-depth="0.7">
+      <div class="dots" style="width:150px; height:200px; top:32%; left:-30px; animation-delay:.5s;"></div>
+      <div class="dots" style="width:150px; height:220px; top:48%; right:-30px; animation-delay:1.6s;"></div>
+    </div>
+    <div class="layer">
+      <div class="particle" style="left:14%; bottom:-10px; width:5px; height:5px; background:rgba(255,150,170,.55); animation-duration:19s; animation-delay:0s;"></div>
+      <div class="particle" style="left:30%; bottom:-10px; width:4px; height:4px; background:rgba(180,160,255,.5); animation-duration:23s; animation-delay:4s;"></div>
+      <div class="particle" style="left:46%; bottom:-10px; width:6px; height:6px; background:rgba(255,170,190,.4); animation-duration:26s; animation-delay:8s;"></div>
+      <div class="particle" style="left:62%; bottom:-10px; width:4px; height:4px; background:rgba(170,190,255,.45); animation-duration:21s; animation-delay:2s;"></div>
+      <div class="particle" style="left:78%; bottom:-10px; width:5px; height:5px; background:rgba(255,150,170,.5); animation-duration:24s; animation-delay:6s;"></div>
+      <div class="particle" style="left:88%; bottom:-10px; width:4px; height:4px; background:rgba(200,170,255,.45); animation-duration:18s; animation-delay:10s;"></div>
+    </div>
+  </div>
+
+  <main class="hero">
+    <div class="icon-wrap">
+      <div class="glow"></div>
+      <div class="hero-icon">
+        <div class="liquid"></div>
+        <div class="shine"></div>
+        <img src="__ICON__" alt="Kopie">
+      </div>
+    </div>
+    <p class="greeting">Hey there! 👋</p>
+    <h1 class="word" aria-label="Kopie">
+      <span>K</span><span>o</span><span>p</span><span>i</span><span>e</span>
+    </h1>
+    <p class="sub">Everything you copy. Always within reach.</p>
+    <p class="sub2">Text, images, links — whatever you copy, Kopie keeps it close and ready when you need it. ❤️</p>
+  </main>
+
+<script>
+  (function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var layers = Array.prototype.slice.call(document.querySelectorAll('.layer[data-depth]'));
+    var tx = 0, ty = 0;
+
+    document.addEventListener('mousemove', function (e) {
+      tx = (e.clientX / window.innerWidth) * 2 - 1;
+      ty = (e.clientY / window.innerHeight) * 2 - 1;
+    }, { passive: true });
+
+    if (reduce) return; // no parallax for reduced-motion users
+    function frame() {
+      for (var i = 0; i < layers.length; i++) {
+        var d = parseFloat(layers[i].getAttribute('data-depth')) || 1;
+        layers[i].style.transform =
+          'translate(' + (tx * 14 * d).toFixed(1) + 'px,' + (ty * 10 * d).toFixed(1) + 'px)';
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+</script>
+</body>
+</html>
