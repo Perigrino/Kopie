@@ -7,6 +7,7 @@ import AppKit
 /// letter-by-letter "Kopie" (Option 8), and the hero copy (greeting, tagline,
 /// description). Respects Reduce Motion.
 struct LandingView: View {
+    @EnvironmentObject var state: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filled = false
     @State private var iconShown = false
@@ -17,6 +18,7 @@ struct LandingView: View {
     @State private var subShown = false
     @State private var iconHovered = false
     @State private var hoverPoint: CGPoint?
+    @State private var breathe = false
 
     private let letters = Array("Kopie")
     private let coral = Color(red: 1.0, green: 0.49, blue: 0.56)
@@ -29,8 +31,8 @@ struct LandingView: View {
             // (including Reduce Motion), mirroring the HTML body gradient.
             baseBackground
 
-            if !reduceMotion {
-                ambient
+            if !reduceMotion, let cycle = ambientCycle {
+                ambient(cycle: cycle)
             }
             VStack(spacing: 5) {
                 glass
@@ -62,35 +64,45 @@ struct LandingView: View {
         BreathingBackground(reduceMotion: reduceMotion)
     }
 
-    @ViewBuilder private var ambient: some View {
+    /// Seconds per ambient breath cycle, from the user's setting (`nil` = off).
+    private var ambientCycle: Double? { state.ambientSpeed.cycle }
+
+    @ViewBuilder private func ambient(cycle: Double) -> some View {
         ZStack {
-            Orb(color: Color(red: 1.0, green: 0.78, blue: 0.85), size: 200, duration: 8, reduceMotion: reduceMotion)
+            Orb(color: Color(red: 1.0, green: 0.78, blue: 0.85), size: 200, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: -160, y: -130)
-            Orb(color: Color(red: 0.76, green: 0.70, blue: 1.0), size: 180, duration: 10, reduceMotion: reduceMotion)
+            Orb(color: Color(red: 0.76, green: 0.70, blue: 1.0), size: 180, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: 160, y: -120)
-            Orb(color: Color(red: 1.0, green: 0.70, blue: 0.80), size: 220, duration: 12, reduceMotion: reduceMotion)
+            Orb(color: Color(red: 1.0, green: 0.70, blue: 0.80), size: 220, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: -150, y: 120)
-            Orb(color: Color(red: 0.70, green: 0.78, blue: 1.0), size: 190, duration: 9, reduceMotion: reduceMotion)
+            Orb(color: Color(red: 0.70, green: 0.78, blue: 1.0), size: 190, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: 160, y: 130)
 
-            Twinkle(symbol: "sparkle", color: coral.opacity(0.6), duration: 2.6, delay: 0, reduceMotion: reduceMotion)
+            Twinkle(symbol: "sparkle", color: coral.opacity(0.6), delay: 0, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: -175, y: -60)
-            Twinkle(symbol: "sparkle", color: Color.purple.opacity(0.5), duration: 3.1, delay: 1.2, reduceMotion: reduceMotion)
+            Twinkle(symbol: "sparkle", color: Color.purple.opacity(0.5), delay: 1.2, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: 170, y: -40)
-            Twinkle(symbol: "sparkle", color: coral.opacity(0.55), duration: 2.8, delay: 2.0, reduceMotion: reduceMotion)
+            Twinkle(symbol: "sparkle", color: coral.opacity(0.55), delay: 2.0, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: -140, y: 80)
-            Twinkle(symbol: "sparkle", color: Color.blue.opacity(0.4), duration: 3.4, delay: 0.6, reduceMotion: reduceMotion)
+            Twinkle(symbol: "sparkle", color: Color.blue.opacity(0.4), delay: 0.6, cycle: cycle, reduceMotion: reduceMotion)
                 .offset(x: 150, y: 90)
 
-            Particle(x: -120, size: 5, duration: 9, delay: 0, reduceMotion: reduceMotion)
-            Particle(x: -10, size: 4, duration: 11, delay: 3, reduceMotion: reduceMotion)
-            Particle(x: 100, size: 6, duration: 10, delay: 6, reduceMotion: reduceMotion)
-            Particle(x: 150, size: 4, duration: 12, delay: 1.5, reduceMotion: reduceMotion)
+            Particle(x: -120, size: 5, delay: 0, cycle: cycle, reduceMotion: reduceMotion)
+            Particle(x: -10, size: 4, delay: 3, cycle: cycle, reduceMotion: reduceMotion)
+            Particle(x: 100, size: 6, delay: 6, cycle: cycle, reduceMotion: reduceMotion)
+            Particle(x: 150, size: 4, delay: 1.5, cycle: cycle, reduceMotion: reduceMotion)
         }
         // Fill the whole window so orbs/sparkles/particles spread across the
         // entire background instead of a content-sized blob in the middle.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The whole ambient layer rides the same ease-in-out drift as the
+        // background breath (same curve, same direction), and the orbs expand
+        // and contract, the twinkles pulse, and the particles drift on that
+        // same cycle too — no competing motions anywhere in the scene.
         .offset(parallax)
+        .offset(x: breathe ? -18 : 14, y: breathe ? -10 : 8)
+        .animation(.easeInOut(duration: cycle).repeatForever(autoreverses: true), value: breathe)
+        .onAppear { if !reduceMotion { breathe = true } }
         .allowsHitTesting(false)
         .clipped()
     }
@@ -271,9 +283,9 @@ private struct ShimmerRing: View {
 private struct Orb: View {
     let color: Color
     let size: CGFloat
-    let duration: Double
+    let cycle: Double
     let reduceMotion: Bool
-    @State private var drift = false
+    @State private var breathe = false
 
     var body: some View {
         Circle()
@@ -281,17 +293,20 @@ private struct Orb: View {
                                  center: .center, startRadius: 4, endRadius: size / 2))
             .frame(width: size, height: size)
             .blur(radius: size / 4)
-            .offset(x: drift ? -20 : 16, y: drift ? 12 : -12)
-            .animation(.easeInOut(duration: duration).repeatForever(autoreverses: true), value: drift)
-            .onAppear { if !reduceMotion { drift = true } }
+            // Orbs subtly expand and contract on the same breath as the
+            // background gradient and the layer drift — one shared cycle, so
+            // the whole scene swells and settles together.
+            .scaleEffect(breathe ? 1.05 : 0.95)
+            .animation(.easeInOut(duration: cycle).repeatForever(autoreverses: true), value: breathe)
+            .onAppear { if !reduceMotion { breathe = true } }
     }
 }
 
 private struct Twinkle: View {
     let symbol: String
     let color: Color
-    let duration: Double
     let delay: Double
+    let cycle: Double
     let reduceMotion: Bool
     @State private var on = false
 
@@ -300,7 +315,9 @@ private struct Twinkle: View {
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(color)
             .opacity(on ? 0.9 : 0.15)
-            .animation(.easeInOut(duration: duration).repeatForever(autoreverses: true).delay(delay), value: on)
+            // Twinkles pulse on the same ease-in-out breath as the
+            // background and orbs — one shared cycle for the whole scene.
+            .animation(.easeInOut(duration: cycle).repeatForever(autoreverses: true).delay(delay), value: on)
             .onAppear { if !reduceMotion { on = true } }
     }
 }
@@ -308,8 +325,8 @@ private struct Twinkle: View {
 private struct Particle: View {
     let x: CGFloat
     let size: CGFloat
-    let duration: Double
     let delay: Double
+    let cycle: Double
     let reduceMotion: Bool
     @State private var risen = false
 
@@ -319,7 +336,9 @@ private struct Particle: View {
             .frame(width: size, height: size)
             .offset(x: x, y: risen ? -120 : 26)
             .opacity(risen ? 0 : 0.55)
-            .animation(.easeInOut(duration: duration).repeatForever(autoreverses: true).delay(delay), value: risen)
+            // Particles drift up and back down on the same breath as the
+            // rest of the ambient layer, so nothing moves on a competing cycle.
+            .animation(.easeInOut(duration: cycle).repeatForever(autoreverses: true).delay(delay), value: risen)
             .onAppear { if !reduceMotion { risen = true } }
     }
 }

@@ -56,7 +56,7 @@ struct OnboardingView: View {
         // Same breathing pastel base as LandingView, so the background effect
         // covers the whole window — including the bottom Back/dots/Continue
         // strip — instead of leaving white gaps around the landing.
-        .background(BreathingBackground(reduceMotion: reduceMotion))
+        .background(BreathingBackground(reduceMotion: reduceMotion, cycle: state.ambientSpeed.cycle))
     }
 
     private func stepView(_ tag: Int, symbol: String, title: String, message: String) -> some View {

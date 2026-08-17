@@ -9,6 +9,7 @@ final class AppState: ObservableObject {
     @Published var isPaused: Bool = false
     @Published var showOnboarding: Bool = false
     @Published var excludedApps: [SettingsStore.ExcludedApp] = []
+    @Published var ambientSpeed: SettingsStore.AmbientSpeed = .slow
     let store: ClipStore
     private let writer: DiskClipWriter
     private let pipeline: CapturePipeline
@@ -49,6 +50,7 @@ final class AppState: ObservableObject {
         self.job = RetentionJob(store: store)
         self.isPaused = settings.monitorPaused
         self.excludedApps = settings.excludedApps
+        self.ambientSpeed = settings.ambientSpeed
 
         restore.onAboutToWrite = { [weak self] in self?.monitor.beginSuppression() }
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged),
@@ -74,6 +76,11 @@ final class AppState: ObservableObject {
     }
 
     @objc private func storeChanged() { refresh() }
+
+    func setAmbientSpeed(_ speed: SettingsStore.AmbientSpeed) {
+        settings.ambientSpeed = speed
+        ambientSpeed = speed
+    }
 
     func addExcludedApp(bundleID: String, name: String) {
         guard !bundleID.isEmpty, !excludedApps.contains(where: { $0.id == bundleID }) else { return }

@@ -30,6 +30,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let startMonitoring = "startMonitoring"
         public static let hasSeenOnboarding = "hasSeenOnboarding"
         public static let hotkey = "hotkey"
+        public static let ambientSpeed = "ambientSpeed"
     }
 
     /// Bump when adding a new migration step.
@@ -42,6 +43,34 @@ public final class SettingsStore: @unchecked Sendable {
         public init(id: String, name: String) {
             self.id = id
             self.name = name
+        }
+    }
+
+    /// Ambient landing animation speed. All ambient motion (background breath,
+    /// orb drift and scale, twinkles, particles) shares one cycle; `off` makes
+    /// the whole scene static while keeping the pastel gradient.
+    public enum AmbientSpeed: String, CaseIterable, Codable, Identifiable, Sendable {
+        case off, slow, medium, fast
+
+        public var id: String { rawValue }
+
+        /// Seconds per breath cycle; `nil` means no ambient motion.
+        public var cycle: Double? {
+            switch self {
+            case .off: return nil
+            case .slow: return 30
+            case .medium: return 18
+            case .fast: return 10
+            }
+        }
+
+        public var label: String {
+            switch self {
+            case .off: return "Off"
+            case .slow: return "Slow"
+            case .medium: return "Medium"
+            case .fast: return "Fast"
+            }
         }
     }
 
@@ -91,6 +120,9 @@ public final class SettingsStore: @unchecked Sendable {
             if let value = defaults.object(forKey: key), value as? Data == nil {
                 defaults.removeObject(forKey: key)
             }
+        }
+        if let value = defaults.object(forKey: Keys.ambientSpeed), value as? String == nil {
+            defaults.removeObject(forKey: Keys.ambientSpeed)
         }
         if let value = defaults.object(forKey: Keys.excludedAppIDs), value as? [String] == nil {
             defaults.removeObject(forKey: Keys.excludedAppIDs)
@@ -184,6 +216,17 @@ public final class SettingsStore: @unchecked Sendable {
     public var hasSeenOnboarding: Bool {
         get { defaults.bool(forKey: Keys.hasSeenOnboarding) }
         set { defaults.set(newValue, forKey: Keys.hasSeenOnboarding) }
+    }
+
+    public var ambientSpeed: AmbientSpeed {
+        get {
+            guard let raw = defaults.object(forKey: Keys.ambientSpeed) as? String,
+                  let speed = AmbientSpeed(rawValue: raw) else {
+                return .slow
+            }
+            return speed
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.ambientSpeed) }
     }
 
     public var hotkey: HotKeySpec {
