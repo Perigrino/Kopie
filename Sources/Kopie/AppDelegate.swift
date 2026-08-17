@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
         GlobalActions.openSettings = { [weak self] in self?.showSettings() }
         GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
+        GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
 
         state.objectWillChange.sink { [weak self] _ in
             self?.applyVisibility()

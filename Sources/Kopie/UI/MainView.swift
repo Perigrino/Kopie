@@ -29,10 +29,17 @@ struct MainView: View {
             if let item = filtered.first(where: { $0.id == selectedID }) {
                 DetailsPanel(item: item)
             } else {
-                ContentUnavailableView("Select an item", systemImage: "square.stack", description: Text("Choose an item from your history to see its details."))
+                ContentUnavailableView("Select an item", systemImage: "square.stack", description: Text("Choose an item from your history to see its details, then press Return to copy it to the clipboard."))
             }
         }
         .navigationTitle("Kopie")
+        .onKeyPress(.return) {
+            guard let id = selectedID, let item = filtered.first(where: { $0.id == id }) else {
+                return .ignored
+            }
+            copy(item)
+            return .handled
+        }
     }
 
     private var list: some View {
