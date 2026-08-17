@@ -4,7 +4,6 @@ import AppKit
 
 struct HistoryRow: View {
     let item: ClipboardItem
-    var isPaused: Bool
     var thumbnail: NSImage?
     var selectionMode: Bool = false
     var isSelected: Bool = false

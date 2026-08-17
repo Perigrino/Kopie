@@ -40,7 +40,7 @@ public final class Database {
         case let d as Double: sqlite3_bind_double(stmt, idx, d)
         case let s as String: sqlite3_bind_text(stmt, idx, (s as NSString).utf8String, -1, transient)
         case let data as Data:
-            data.withUnsafeBytes { raw in
+            _ = data.withUnsafeBytes { raw in
                 sqlite3_bind_blob(stmt, idx, raw.baseAddress, Int32(raw.count), transient)
             }
         default: sqlite3_bind_text(stmt, idx, String(describing: value!), -1, transient)

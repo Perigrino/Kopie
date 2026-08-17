@@ -90,7 +90,6 @@ struct PopoverView: View {
                             .padding(.top, 10).padding(.bottom, 4)
                         ForEach(group.items) { item in
                             HistoryRow(item: item,
-                                       isPaused: state.isPaused,
                                        thumbnail: state.thumbnail(for: item),
                                        selectionMode: selectionMode,
                                        isSelected: selectedIDs.contains(item.id),
@@ -127,6 +126,7 @@ struct PopoverView: View {
                     .disabled(state.items.isEmpty)
                 Button("Clear") { showClearConfirm = true }
                     .disabled(state.items.isEmpty)
+                Button("Quit") { NSApp.terminate(nil) }
             }
         }
         .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)

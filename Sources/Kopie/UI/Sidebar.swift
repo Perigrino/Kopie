@@ -25,7 +25,6 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
 
 struct Sidebar: View {
     @Binding var selection: HistoryFilter?
-    @EnvironmentObject var state: AppState
 
     var body: some View {
         List(selection: $selection) {

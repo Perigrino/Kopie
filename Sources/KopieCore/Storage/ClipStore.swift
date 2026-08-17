@@ -121,14 +121,15 @@ public final class ClipStore {
         (try? db.rows("SELECT content_hash FROM clipboard_items ORDER BY id DESC LIMIT 1", []))?.first?.first as? String
     }
     public func setFavorite(_ id: Int64, _ flag: Bool) {
-        try? db.run("UPDATE clipboard_items SET is_favorite = ? WHERE id = ?", [flag ? 1 : 0, id])
+        _ = try? db.run("UPDATE clipboard_items SET is_favorite = ? WHERE id = ?", [flag ? 1 : 0, id])
     }
     public func bumpAccessed(_ id: Int64, _ now: Date = .now) {
-        try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
+        _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
     }
     public func delete(_ ids: [Int64]) {
-        for id in ids { try? db.run("DELETE FROM clipboard_items WHERE id = ?", [id]) }
+        for id in ids { _ = try? db.run("DELETE FROM clipboard_items WHERE id = ?", [id]) }
     }
+    @discardableResult
     public func clearAll() -> Int64 {
         (try? db.run("DELETE FROM clipboard_items", [])) ?? 0
     }
@@ -159,7 +160,7 @@ public final class ClipStore {
         guard all > Int64(max) else { return }
         // Keep favorites first, then newest; evict the oldest non-favorites beyond the cap.
         // `max` is an Int we control, so inlining is safe.
-        try? db.run("""
+        _ = try? db.run("""
         DELETE FROM clipboard_items
         WHERE id NOT IN (
           SELECT id FROM clipboard_items

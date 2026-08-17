@@ -85,7 +85,7 @@ struct HotKeyRecorder: View {
         return mods
     }
 
-    static func keyName(_ keyCode: UInt32) -> String {
+    nonisolated static func keyName(_ keyCode: UInt32) -> String {
         let special: [UInt32: String] = [
             49: "Space", 36: "Return", 48: "Tab", 53: "Esc",
             123: "←", 124: "→", 125: "↓", 126: "↑",
