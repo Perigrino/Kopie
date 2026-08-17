@@ -39,5 +39,4 @@ final class HotKeyManager {
         if let ref = eventHandlerRef { RemoveEventHandler(ref); eventHandlerRef = nil }
         handler = nil
     }
-
 }

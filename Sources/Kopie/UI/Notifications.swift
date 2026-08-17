@@ -9,14 +9,12 @@ enum KopieNotifications {
     private static func deliver(title: String, body: String) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in
-            Task {
-                let content = UNMutableNotificationContent()
-                content.title = title
-                content.body = body
-                content.sound = .default
-                let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-                try? await center.add(request)
-            }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            center.add(request)
         }
     }
 }

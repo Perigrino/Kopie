@@ -2,8 +2,8 @@ import SwiftUI
 import KopieCore
 
 struct SettingsCleanupTab: View {
-    @AppStorage(SettingsStore.Keys.retentionPeriod) private var retentionPeriod = RetentionPeriod.daySeven.rawValue
-    @AppStorage(SettingsStore.Keys.autoDeleteFavorites) private var autoDeleteFavorites = false
+    @AppStorage("retentionPeriod") private var retentionPeriod = RetentionPeriod.daySeven.rawValue
+    @AppStorage("autoDeleteFavorites") private var autoDeleteFavorites = false
 
     var body: some View {
         Form {

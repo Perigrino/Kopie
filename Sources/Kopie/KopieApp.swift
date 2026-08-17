@@ -17,5 +17,4 @@ enum GlobalActions {
     static var openMain: (() -> Void)?
     static var openSettings: (() -> Void)?
     static var openOnboarding: (() -> Void)?
-    static var closePopover: (() -> Void)?
 }
