@@ -5,23 +5,13 @@ import AppKit
 struct DetailsPanel: View {
     let item: ClipboardItem
     @EnvironmentObject var state: AppState
-    @State private var showToast = false
-    @State private var toastTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(item.typeLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                Spacer()
-                if item.isFavorite {
-                    Label("Favorite", systemImage: "star.fill")
-                        .font(.caption)
-                        .foregroundStyle(.yellow)
-                }
-            }
+            Text(item.typeLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
             content
             metaGrid
             actions
@@ -29,12 +19,6 @@ struct DetailsPanel: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .overlay(alignment: .bottomTrailing) {
-            if showToast {
-                CopiedToast().padding(16)
-            }
-        }
-        .onChange(of: item.id) { showToast = false }
     }
 
     @ViewBuilder private var content: some View {
@@ -82,7 +66,7 @@ struct DetailsPanel: View {
     private var actions: some View {
         HStack(spacing: 10) {
             Button {
-                copyBack()
+                state.copyBack(item)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }
@@ -106,17 +90,5 @@ struct DetailsPanel: View {
             .buttonStyle(.bordered)
         }
         .padding(.top, 4)
-    }
-
-    private func copyBack() {
-        state.copyBack(item)
-        showToast = true
-        toastTask?.cancel()
-        toastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            if !Task.isCancelled {
-                withAnimation { showToast = false }
-            }
-        }
     }
 }

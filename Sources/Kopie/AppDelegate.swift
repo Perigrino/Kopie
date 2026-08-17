@@ -32,7 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
         GlobalActions.openSettings = { [weak self] in self?.showSettings() }
         GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
-        GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
 
         state.objectWillChange.sink { [weak self] _ in
             self?.applyVisibility()
@@ -96,7 +95,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Status item
 
-    private func applyVisibility() { statusItem.isVisible = SettingsStore.shared.showMenuBarIcon }
+    private func applyVisibility() { statusItem.isVisible = visibleFromSettings() }
+    private func visibleFromSettings() -> Bool {
+        (UserDefaults.standard.object(forKey: "showMenuBarIcon") as? Bool) ?? true
+    }
     @objc func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(nil) }
@@ -107,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
+    /// Left-click toggles the popover; right-click shows a small menu with Quit.
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { togglePopover(); return }
         if event.type == .rightMouseUp {
@@ -132,13 +135,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func openFromMenu() { GlobalActions.openMain?() }
     @objc private func openSettingsFromMenu() { showSettings() }
     @objc private func quitFromMenu() { NSApp.terminate(nil) }
+
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
     func showFromHotKey() { togglePopover() }
 
     // MARK: - Hotkey
 
     private func registerHotKey() {
-        let spec = SettingsStore.shared.hotkey
+        let spec = UserDefaults.standard.hotKeySpec
         _ = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
             MainActor.assumeIsolated { self?.showFromHotKey() }
         }

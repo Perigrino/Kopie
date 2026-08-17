@@ -7,7 +7,6 @@ struct HistoryRow: View {
     var thumbnail: NSImage?
     var selectionMode: Bool = false
     var isSelected: Bool = false
-    var isHighlighted: Bool = false
     var onCopy: () -> Void
     var onRemove: () -> Void
     var onFavorite: () -> Void
@@ -41,22 +40,11 @@ struct HistoryRow: View {
             Spacer()
             if !selectionMode && hovering {
                 quickButtons
-            } else if !selectionMode && item.isFavorite {
-                Image(systemName: "star.fill")
-                    .foregroundStyle(.yellow)
-                    .font(.caption)
-                    .frame(width: 24, height: 24)
             }
         }
         .padding(8)
-        .background(backgroundFill,
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            if isHighlighted && !selectionMode {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1)
-            }
-        }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .modifier(TapAction(enabled: selectionMode || copyOnTap) {
@@ -99,23 +87,11 @@ struct HistoryRow: View {
 
     @ViewBuilder private var quickButtons: some View {
         HStack(spacing: 8) {
-            Button(action: onCopy) {
-                Image(systemName: "doc.on.doc")
-            }.buttonStyle(.plain).foregroundStyle(Color.accentColor)
-            .help("Copy")
             Button(action: onFavorite) {
                 Image(systemName: item.isFavorite ? "star.fill" : "star")
             }.buttonStyle(.plain).foregroundStyle(item.isFavorite ? .yellow : .secondary)
-            .help(item.isFavorite ? "Unfavorite" : "Favorite")
             Button(action: onRemove) { Image(systemName: "trash") }.buttonStyle(.plain).foregroundStyle(.secondary)
-            .help("Delete")
         }
-    }
-
-    private var backgroundFill: Color {
-        if selectionMode && isSelected { Color.accentColor.opacity(0.12) }
-        else if isHighlighted { Color.accentColor.opacity(0.08) }
-        else { Color.clear }
     }
 
     private func time(_ d: Date) -> String {

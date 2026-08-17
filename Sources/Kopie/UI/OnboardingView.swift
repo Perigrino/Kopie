@@ -94,7 +94,6 @@ struct OnboardingView: View {
                 .font(.body).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transition(.scale(scale: 0.85).combined(with: .opacity))
-        .animation(.spring(response: 0.4, dampingFraction: 0.6), value: step)
+        .transition(.scale.combined(with: .opacity))
     }
 }
