@@ -3,7 +3,6 @@ import KopieCore
 
 struct MainView: View {
     @EnvironmentObject var state: AppState
-    @Environment(\.openWindow) private var openWindow
     @State private var selection: HistoryFilter? = .all
     @State private var selectedID: Int64?
     @State private var searchText = ""
@@ -27,17 +26,13 @@ struct MainView: View {
         } content: {
             list
         } detail: {
-            if let item = state.items.first(where: { $0.id == selectedID }) {
+            if let item = filtered.first(where: { $0.id == selectedID }) {
                 DetailsPanel(item: item)
             } else {
                 ContentUnavailableView("Select an item", systemImage: "square.stack", description: Text("Choose an item from your history to see its details."))
             }
         }
         .navigationTitle("Kopie")
-        .searchable(text: $searchText, placement: .sidebar, prompt: "Search clipboard…")
-        .onAppear {
-            GlobalActions.openMain = { openWindow(id: "main") }
-        }
     }
 
     private var list: some View {
@@ -57,7 +52,8 @@ struct MainView: View {
                                        thumbnail: state.thumbnail(for: item),
                                        onCopy: { copy(item) },
                                        onRemove: { state.remove(item) },
-                                       onFavorite: { state.toggleFavorite(item) })
+                                       onFavorite: { state.toggleFavorite(item) },
+                                       copyOnTap: false)
                                 .tag(item.id)
                         }
                     }
@@ -65,6 +61,7 @@ struct MainView: View {
             }
         }
         .listStyle(.inset)
+        .searchable(text: $searchText, prompt: "Search clipboard…")
     }
 
     private func copy(_ item: ClipboardItem) {

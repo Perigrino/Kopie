@@ -7,34 +7,7 @@ struct KopieApp: App {
     var body: some Scene {
         Settings {
             SettingsView().environmentObject(appDelegate.state)
-                .background(WindowProxy())
         }
-        Window("Kopie", id: "main") {
-            MainView().environmentObject(appDelegate.state)
-                .background(WindowProxy())
-        }
-        .defaultSize(width: 900, height: 560)
-        Window("Welcome to Kopie", id: "onboarding") {
-            OnboardingView().environmentObject(appDelegate.state)
-                .background(WindowProxy())
-        }
-        .windowResizability(.contentSize)
-    }
-}
-
-/// Captures `openWindow`/`openSettings` from the scene environment and exposes
-/// them via `GlobalActions` so the menu-bar popover can open the windows.
-private struct WindowProxy: View {
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onAppear {
-                GlobalActions.openMain = { openWindow(id: "main") }
-                GlobalActions.openSettings = { openSettings() }
-                GlobalActions.openOnboarding = { openWindow(id: "onboarding") }
-            }
     }
 }
 

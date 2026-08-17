@@ -33,7 +33,7 @@ struct PopoverView: View {
                 title: "Clear clipboard history?",
                 message: "This will permanently remove all saved clipboard items. This action cannot be undone.",
                 confirmTitle: "Clear All", destructive: true,
-                onConfirm: { state.removeAll(); showClearConfirm = false; notifyCleared() },
+                onConfirm: { state.removeAll(); showClearConfirm = false },
                 onCancel: { showClearConfirm = false })
         }
     }
@@ -108,26 +108,23 @@ struct PopoverView: View {
     private var bottomBar: some View {
         HStack {
             if selectionMode {
-                Button(selectedIDs.isEmpty ? "Select All" : "Cancel") {
-                    if selectedIDs.isEmpty {
-                        selectedIDs = Set(state.items.map { $0.id })
-                    } else {
-                        selectionMode = false; selectedIDs = []
-                    }
+                Button("Cancel") {
+                    selectionMode = false; selectedIDs = []
                 }
-                if !selectedIDs.isEmpty {
-                    Button("Delete \(selectedIDs.count)") { deleteSelected() }
-                        .foregroundStyle(.red)
+                Button("Select All") {
+                    selectedIDs = Set(state.items.map { $0.id })
                 }
+                .disabled(selectedIDs.count == state.items.count)
+                Spacer()
+                Button("Delete \(selectedIDs.count)") { deleteSelected() }
+                    .foregroundStyle(selectedIDs.isEmpty ? Color.secondary : Color.red)
+                    .disabled(selectedIDs.isEmpty)
             } else {
                 Button("Open Kopie") { openMain() }
                 Button("Settings…") { showSettings() }
-            }
-            Spacer()
-            Button(selectionMode ? "Done" : "Select") {
-                withAnimation { selectionMode.toggle(); if !selectionMode { selectedIDs = [] } }
-            }
-            if !selectionMode {
+                Spacer()
+                Button("Select") { withAnimation { selectionMode = true } }
+                    .disabled(state.items.isEmpty)
                 Button("Clear") { showClearConfirm = true }
                     .disabled(state.items.isEmpty)
             }
@@ -159,10 +156,6 @@ struct PopoverView: View {
         selectedIDs = []
     }
 
-    private func notifyCleared() {
-        NotificationCenter.default.post(name: .kopieHistoryCleared, object: nil)
-    }
-
     private func openMain() {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -172,5 +165,3 @@ struct PopoverView: View {
         GlobalActions.openSettings?()
     }
 }
-
-extension Notification.Name { static let kopieHistoryCleared = Notification.Name("kopieHistoryCleared") }

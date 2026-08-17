@@ -40,27 +40,39 @@ extension UserDefaults {
 /// Button that, when clicked, records the next keydown and stores it as the global hotkey.
 struct HotKeyRecorder: View {
     @State private var recording = false
-    private var monitor: Any?
+    @State private var monitor: Any?
 
     var body: some View {
         Button {
-            recording = true
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                handle(event)
-                return nil
+            if recording { stopRecording() }
+            else {
+                recording = true
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    if event.keyCode == 53 { // Esc cancels
+                        stopRecording()
+                        return nil
+                    }
+                    handle(event)
+                    return nil
+                }
             }
         } label: {
-            Text(recording ? "Press a key…" : (UserDefaults.standard.hotKeySpec.label))
+            Text(recording ? "Press a key… (Esc to cancel)" : (UserDefaults.standard.hotKeySpec.label))
                 .font(.body.monospacedDigit())
-                .frame(minWidth: 120)
+                .frame(minWidth: 140)
         }
-        .disabled(recording == false ? false : true)
+    }
+
+    private func stopRecording() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        recording = false
     }
 
     private func handle(_ event: NSEvent) {
         let spec = HotKeySpec(keyCode: UInt32(event.keyCode), modifiers: carbonModifiers(event.modifierFlags))
         UserDefaults.standard.hotKeySpec = spec
-        recording = false
+        stopRecording()
         NotificationCenter.default.post(name: .kopieHotKeyChanged, object: nil)
     }
 

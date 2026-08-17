@@ -18,8 +18,5 @@ struct SettingsView: View {
                 .tabItem { Label("Storage", systemImage: "externaldrive") }
         }
         .frame(width: 520, height: 420)
-        .onAppear {
-            GlobalActions.openSettings = { /* opened via scene */ }
-        }
     }
 }
