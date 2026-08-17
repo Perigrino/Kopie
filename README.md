@@ -6,6 +6,14 @@ Everything you copy, available when you need it.
 Spec: `docs/superpowers/specs/2026-08-16-kopie-design.md`
 Plan: `docs/superpowers/plans/2026-08-16-kopie.md`
 
+## Screenshots
+
+<p>
+  <img src="assets/screenshots/main.png" width="700" alt="Kopie main window with sidebar filters and clipboard history">
+  <img src="assets/screenshots/popover.png" width="340" alt="Kopie menu-bar popover">
+  <img src="assets/screenshots/settings.png" width="520" alt="Kopie settings">
+</p>
+
 ## Features
 - Captures text and images copied anywhere on your Mac (menu-bar icon, `doc.on.clipboard`)
 - Live search + day-grouped history (Today / Yesterday / Older) with image thumbnails
