@@ -1,11 +1,12 @@
 import SwiftUI
 import ServiceManagement
+import KopieCore
 
 struct SettingsGeneralTab: View {
     @EnvironmentObject var state: AppState
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
-    @AppStorage("startMonitoring") private var startMonitoring = true
+    @AppStorage(SettingsStore.Keys.launchAtLogin) private var launchAtLogin = false
+    @AppStorage(SettingsStore.Keys.showMenuBarIcon) private var showMenuBarIcon = true
+    @AppStorage(SettingsStore.Keys.startMonitoring) private var startMonitoring = true
 
     var body: some View {
         Form {

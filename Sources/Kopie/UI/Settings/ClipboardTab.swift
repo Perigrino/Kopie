@@ -1,11 +1,12 @@
 import SwiftUI
+import KopieCore
 
 struct SettingsClipboardTab: View {
     @EnvironmentObject var state: AppState
-    @AppStorage("saveText") private var saveText = true
-    @AppStorage("saveImages") private var saveImages = true
-    @AppStorage("ignoreDuplicates") private var ignoreDuplicates = true
-    @AppStorage("maxItems") private var maxItems = 1000
+    @AppStorage(SettingsStore.Keys.saveText) private var saveText = true
+    @AppStorage(SettingsStore.Keys.saveImages) private var saveImages = true
+    @AppStorage(SettingsStore.Keys.ignoreDuplicates) private var ignoreDuplicates = true
+    @AppStorage(SettingsStore.Keys.maxItems) private var maxItems = 1000
 
     var body: some View {
         Form {
