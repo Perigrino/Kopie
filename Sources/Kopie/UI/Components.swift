@@ -10,6 +10,9 @@ enum DS {
 /// Skipped under Reduce Motion (the gradient itself still covers everything).
 struct BreathingBackground: View {
     var reduceMotion: Bool
+    /// Seconds per breath cycle; `nil` (or Reduce Motion) keeps the gradient
+    /// static while still covering the whole background.
+    var cycle: Double? = 30
     @State private var breathe = false
 
     private let colors = [
@@ -27,8 +30,8 @@ struct BreathingBackground: View {
                 // window (background-position 0%→100%).
                 .frame(width: geo.size.width * 2, height: geo.size.height * 2)
                 .offset(x: breathe ? -geo.size.width : 0, y: breathe ? -geo.size.height : 0)
-                .animation(.easeInOut(duration: 30).repeatForever(autoreverses: true), value: breathe)
-                .onAppear { if !reduceMotion { breathe = true } }
+                .animation(.easeInOut(duration: cycle ?? 30).repeatForever(autoreverses: true), value: breathe)
+                .onAppear { if !reduceMotion, let cycle, cycle > 0 { breathe = true } }
         }
         .ignoresSafeArea()
     }

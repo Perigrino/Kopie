@@ -21,6 +21,17 @@ struct SettingsGeneralTab: View {
                 Spacer()
                 HotKeyRecorder()
             }
+            Section {
+                Picker("Ambient background",
+                       selection: Binding(get: { state.ambientSpeed },
+                                          set: { state.setAmbientSpeed($0) })) {
+                    ForEach(SettingsStore.AmbientSpeed.allCases) { speed in
+                        Text(speed.label).tag(speed)
+                    }
+                }
+            } header: {
+                Text("Landing page")
+            }
         }
         .formStyle(.grouped)
         .padding(8)
