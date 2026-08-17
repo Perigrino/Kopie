@@ -3,6 +3,7 @@ import Foundation
 public enum ClipKind: String, Sendable {
     case text
     case image
+    case file
 }
 
 /// Coarse time bucket used by the "Today"/"Yesterday" sidebar filters.
@@ -69,17 +70,34 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     }
 
     public var charCount: Int? { text?.count }
-    public var typeLabel: String { kind == .text ? "Text" : "Image" }
+    public var typeLabel: String {
+        switch kind {
+        case .text: "Text"
+        case .image: "Image"
+        case .file: "File"
+        }
+    }
     public var dimensionLabel: String? {
         guard let w = width, let h = height else { return nil }
         return "\(w) × \(h)"
     }
     public var preview: String {
+        if kind == .file {
+            let names = (filePaths ?? []).map { ($0 as NSString).lastPathComponent }
+            let one = names.joined(separator: ", ")
+            return one.count > 200 ? String(one.prefix(200)) + "…" : one
+        }
         if let t = text {
             let one = t.replacingOccurrences(of: "\n", with: " ")
             return one.count > 200 ? String(one.prefix(200)) + "…" : one
         }
         return "(image)"
+    }
+
+    /// File paths stored for a file item (newline-joined in `text`).
+    public var filePaths: [String]? {
+        guard kind == .file, let t = text, !t.isEmpty else { return nil }
+        return t.components(separatedBy: "\n").filter { !$0.isEmpty }
     }
 }
 
@@ -88,6 +106,7 @@ public struct CapturedContent: Sendable {
     public enum Kind: Sendable {
         case text(String)
         case image(Data)
+        case files([String])
     }
     public let kind: Kind
     public let sourceAppID: String?
@@ -97,13 +116,21 @@ public struct CapturedContent: Sendable {
         self.sourceAppID = sourceAppID
     }
 
-    public var clipKind: ClipKind { if case .text = kind { .text } else { .image } }
+    public var clipKind: ClipKind {
+        switch kind {
+        case .text: .text
+        case .image: .image
+        case .files: .file
+        }
+    }
     public var text: String? { if case .text(let s) = kind { s } else { nil } }
     public var imageData: Data? { if case .image(let d) = kind { d } else { nil } }
+    public var filePaths: [String]? { if case .files(let p) = kind { p } else { nil } }
     public var canonicalData: Data {
         switch kind {
         case .text(let s): Data(s.utf8)
         case .image(let d): d
+        case .files(let p): Data(p.joined(separator: "\n").utf8)
         }
     }
 }

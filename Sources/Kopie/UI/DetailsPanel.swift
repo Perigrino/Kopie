@@ -29,6 +29,21 @@ struct DetailsPanel: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+        } else if item.kind == .file {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(item.filePaths ?? [], id: \.self) { path in
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc")
+                                .foregroundStyle(.secondary)
+                            Text(path)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         } else if let thumb = state.thumbnail(for: item) {
             ScrollView([.horizontal, .vertical]) {
                 Image(nsImage: thumb)
@@ -45,7 +60,8 @@ struct DetailsPanel: View {
     private var metaGrid: some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
             GridRow { meta("Copied", item.createdAt.formatted(date: .abbreviated, time: .standard)) }
-            if let c = item.charCount { GridRow { meta("Characters", "\(c)") } }
+            if item.kind == .text, let c = item.charCount { GridRow { meta("Characters", "\(c)") } }
+            if item.kind == .file, let n = item.filePaths?.count { GridRow { meta("Files", "\(n)") } }
             if item.kind == .image, let d = item.dimensionLabel { GridRow { meta("Dimensions", d) } }
             GridRow { meta("Size", ByteCountFormatter.string(fromByteCount: Int64(item.fileSize), countStyle: .file)) }
             if item.isFavorite { GridRow { meta("Favorite", "Yes") } }

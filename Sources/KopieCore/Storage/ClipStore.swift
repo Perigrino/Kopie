@@ -169,4 +169,41 @@ public final class ClipStore {
         )
         """, [])
     }
+
+    // MARK: - One-time cleanups
+
+    /// Schema/cleanup version stamp (SQLite `user_version`). Starts at 0 and
+    /// only ever moves forward, so one-time cleanups run exactly once per DB.
+    public var cleanupVersion: Int64 {
+        db.scalarInt64("PRAGMA user_version")
+    }
+
+    public func setCleanupVersion(_ version: Int64) {
+        _ = try? db.run("PRAGMA user_version = \(version)", [])
+    }
+
+    /// Non-favorite text rows for one-time inspection (e.g. pre-fix image-URL
+    /// captures). Favorites are never touched by cleanups.
+    public func textItemsForCleanup() -> [(id: Int64, text: String)] {
+        let rows = (try? db.rows(
+            "SELECT id, text_content FROM clipboard_items WHERE kind = 'text' AND is_favorite = 0 AND text_content IS NOT NULL",
+            [])) ?? []
+        return rows.compactMap { r in
+            guard let id = r[0] as? Int64, let t = r[1] as? String else { return nil }
+            return (id, t)
+        }
+    }
+
+    /// Rewrites a stored text row into a real image row (used when the text
+    /// flavor carried the image itself, e.g. a base64 data URI).
+    public func convertToImage(id: Int64, imageRelPath: String, thumbRelPath: String?,
+                               fileSize: Int, width: Int?, height: Int?) {
+        _ = try? db.run("""
+        UPDATE clipboard_items
+        SET kind = 'image', text_content = NULL,
+            image_rel_path = ?, thumb_rel_path = ?, file_size = ?, width = ?, height = ?
+        WHERE id = ?
+        """, [imageRelPath, thumbRelPath, Int64(fileSize), width.flatMap(Int64.init),
+              height.flatMap(Int64.init), id])
+    }
 }

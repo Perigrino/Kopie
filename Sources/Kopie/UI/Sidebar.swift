@@ -1,13 +1,14 @@
 import SwiftUI
 
 enum HistoryFilter: String, CaseIterable, Identifiable {
-    case all, text, images, today, favorites
+    case all, text, images, files, today, favorites
     var id: String { rawValue }
     var label: String {
         switch self {
         case .all: "All"
         case .text: "Text"
         case .images: "Images"
+        case .files: "Files"
         case .today: "Today"
         case .favorites: "Favorites"
         }
@@ -17,6 +18,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
         case .all: "tray.full"
         case .text: "doc.text"
         case .images: "photo"
+        case .files: "folder"
         case .today: "clock"
         case .favorites: "star"
         }

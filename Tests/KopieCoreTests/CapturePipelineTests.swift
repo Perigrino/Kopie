@@ -71,6 +71,63 @@ final class CapturePipelineTests: XCTestCase {
         for i in 0..<5 { _ = pipe.process(.init(kind: .text("t\(i)"), sourceAppID: nil), config: c) }
         XCTAssertEqual(store.count(), 3)
     }
+    func test_capturesFiles_storesPathsAndSize() throws {
+        let a = tmp.appendingPathComponent("file-a.txt")
+        let b = tmp.appendingPathComponent("file-b.txt")
+        try Data("hello".utf8).write(to: a)
+        try Data("world!".utf8).write(to: b)
+        let r = pipe.process(.init(kind: .files([a.path, b.path]), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        let it = store.get(id)!
+        XCTAssertEqual(it.kind, .file)
+        XCTAssertEqual(it.filePaths, [a.path, b.path])
+        XCTAssertEqual(it.fileSize, 11)
+    }
+    func test_singleImageFileCopy_becomesImage() throws {
+        // Finder copies don't put image bytes on the pasteboard — only the file
+        // reference. A single copied image file must register as a real image
+        // item so the app can display a thumbnail.
+        let imgURL = tmp.appendingPathComponent("photo.png")
+        try png().write(to: imgURL)
+        let r = pipe.process(.init(kind: .files([imgURL.path]), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        let it = store.get(id)!
+        XCTAssertEqual(it.kind, .image)
+        XCTAssertEqual(it.width, 40)
+        XCTAssertNotNil(it.imageRelPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tmp.appendingPathComponent(it.imageRelPath!).path))
+        XCTAssertEqual(it.filePaths, nil)
+    }
+    func test_multiFileCopyWithImage_staysFile() throws {
+        let imgURL = tmp.appendingPathComponent("a.png")
+        let txtURL = tmp.appendingPathComponent("b.txt")
+        try png().write(to: imgURL)
+        try Data("x".utf8).write(to: txtURL)
+        let r = pipe.process(.init(kind: .files([imgURL.path, txtURL.path]), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        let it = store.get(id)!
+        XCTAssertEqual(it.kind, .file)
+        XCTAssertEqual(it.filePaths?.count, 2)
+    }
+    func test_nonImageFileCopy_staysFile() throws {
+        let a = tmp.appendingPathComponent("notes.txt")
+        try Data("hello".utf8).write(to: a)
+        let r = pipe.process(.init(kind: .files([a.path]), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        XCTAssertEqual(store.get(id)?.kind, .file)
+    }
+    func test_unreadableImageFileCopy_fallsBackToFile() {
+        // A .png path that no longer exists (or can't be decoded) must still
+        // register as a file item instead of erroring out.
+        let missing = tmp.appendingPathComponent("gone.png").path
+        let r = pipe.process(.init(kind: .files([missing]), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        XCTAssertEqual(store.get(id)?.kind, .file)
+    }
+    func test_filesDisabledWhenOff() {
+        var c = CaptureConfig(); c.saveFiles = false
+        XCTAssertEqual(pipe.process(.init(kind: .files(["/tmp/x"]), sourceAppID: nil), config: c), .disabledKind)
+    }
     func test_differentTextThenImageBothCaptured() {
         _ = pipe.process(.init(kind: .text("some text"), sourceAppID: nil), config: .default)
         let r = pipe.process(.init(kind: .image(png()), sourceAppID: nil), config: .default)

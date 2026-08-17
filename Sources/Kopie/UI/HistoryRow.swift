@@ -35,7 +35,8 @@ struct HistoryRow: View {
                         Text("·").foregroundStyle(.secondary)
                         Text("\((item.width ?? 0)) × \((item.height ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
-                    if let c = item.charCount { Text("·").foregroundStyle(.secondary); Text("\(c) chars").font(.caption).foregroundStyle(.tertiary) }
+                    if item.kind == .text, let c = item.charCount { Text("·").foregroundStyle(.secondary); Text("\(c) chars").font(.caption).foregroundStyle(.tertiary) }
+                    if item.kind == .file, let n = item.filePaths?.count { Text("·").foregroundStyle(.secondary); Text("\(n) file\(n == 1 ? "" : "s")").font(.caption).foregroundStyle(.tertiary) }
                 }
             }
             Spacer()
@@ -83,6 +84,10 @@ struct HistoryRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         } else if item.kind == .image {
             Image(systemName: "photo")
+                .frame(width: 40, height: 40)
+                .foregroundStyle(.secondary)
+        } else if item.kind == .file {
+            Image(systemName: "folder")
                 .frame(width: 40, height: 40)
                 .foregroundStyle(.secondary)
         } else {

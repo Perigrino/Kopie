@@ -27,6 +27,7 @@ final class SettingsStoreTests: XCTestCase {
         let s = store()
         XCTAssertEqual(s.saveText, true)
         XCTAssertEqual(s.saveImages, true)
+        XCTAssertEqual(s.saveFiles, true)
         XCTAssertEqual(s.ignoreDuplicates, true)
         XCTAssertEqual(s.maxItems, 1000)
         XCTAssertEqual(s.retentionPeriod, .daySeven)

@@ -39,6 +39,17 @@ final class RestoreServiceTests: XCTestCase {
         RestoreService().restore(item, writer: w)
         XCTAssertNotNil(NSPasteboard.general.data(forType: .png) ?? NSPasteboard.general.data(forType: .tiff))
     }
+    func test_restoreFile_setsFileURLOnPasteboard() {
+        let b = NSPasteboard.general
+        b.clearContents()
+        defer { b.clearContents() }
+        let item = ClipboardItem(id: 3, kind: .file, createdAt: .now, lastAccessedAt: .now, isFavorite: false,
+                                 contentHash: "f1", text: "/tmp/kopie-file.txt", imageRelPath: nil,
+                                 thumbRelPath: nil, fileSize: 0, width: nil, height: nil)
+        RestoreService().restore(item, writer: DiskClipWriter(baseDir: tmp))
+        let url = b.propertyList(forType: .fileURL) as? String
+        XCTAssertEqual(url, "file:///tmp/kopie-file.txt")
+    }
     func test_onAboutToWrite_calledBeforeWrite() {
         let svc = RestoreService()
         var fired = false

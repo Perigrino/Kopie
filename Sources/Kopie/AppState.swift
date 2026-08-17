@@ -55,6 +55,9 @@ final class AppState: ObservableObject {
         restore.onAboutToWrite = { [weak self] in self?.monitor.beginSuppression() }
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged),
                                                name: .kopieStoreChanged, object: nil)
+        // One-time migration: clean up text entries that were really image
+        // copies (captured as URLs before the image-first reader fix).
+        OneTimeCleanup(store: store, writer: writer).run()
         // launch-time catch-up retention
         runRetentionPolicy()
         if !settings.hasSeenOnboarding { showOnboarding = true }
