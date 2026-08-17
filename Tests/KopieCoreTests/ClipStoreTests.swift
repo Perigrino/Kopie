@@ -132,5 +132,57 @@ final class ClipStoreTests: XCTestCase {
 
         let stored = (try db.rows("SELECT text_content FROM clipboard_items", [])).first?.first as? String
         XCTAssertTrue(AtRestText.isEncrypted(stored!))
+        // The migration backfills the search index, so the row is searchable.
+        XCTAssertEqual(s.query(.init(textQuery: "old plaintext")).count, 1)
+    }
+
+    // MARK: - Encrypted search index
+
+    func test_indexSearchFindsRowsBeyondWindow() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        // Insert >1000 items: a windowed search (1000 newest) could never find
+        // the oldest one, but the index covers the whole history.
+        for i in 0..<1010 { _ = s.insert(item(.text, "unique-payload-\(i)")) }
+        XCTAssertEqual(s.query(.init(textQuery: "unique-payload-0")).count, 1)
+        XCTAssertEqual(s.query(.init(textQuery: "unique-payload-0")).first?.text, "unique-payload-0")
+    }
+
+    func test_shortQueryFallsBackToWindowedSearch() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        _ = s.insert(item(.text, "abracadabra"))
+        // 2 chars — no trigrams — must still match via the fallback path.
+        XCTAssertEqual(s.query(.init(textQuery: "ab")).count, 1)
+        // 4 chars — index path.
+        XCTAssertEqual(s.query(.init(textQuery: "abra")).count, 1)
+    }
+
+    func test_indexContainsNoPlaintext() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        _ = s.insert(item(.text, "pineapple secret"))
+        let db = try Database(path: tmp.appendingPathComponent("kopie.db").path)
+        let tokens = (try db.rows("SELECT token FROM search_index", [])).compactMap { $0[0] as? Data }
+        XCTAssertFalse(tokens.isEmpty)
+        // Tokens are HMAC output — never valid UTF-8 trigram strings.
+        for t in tokens { XCTAssertNil(String(data: t, encoding: .utf8)) }
+    }
+
+    func test_deleteCleansIndexEntries() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        let id = s.insert(item(.text, "deletable text here"))
+        s.delete([id])
+        let db = try Database(path: tmp.appendingPathComponent("kopie.db").path)
+        let n = (try db.rows("SELECT COUNT(*) FROM search_index", [])).first?.first as? Int64 ?? -1
+        XCTAssertEqual(n, 0)
+        // And the row itself is gone from search results.
+        XCTAssertEqual(s.query(.init(textQuery: "deletable")).count, 0)
+    }
+
+    func test_indexSearchRespectsKindFilter() throws {
+        let s = try ClipStore(dir: tmp, crypto: InMemoryHistoryCrypto())
+        _ = s.insert(item(.text, "shared token here"))
+        _ = s.insert(item(.file, "shared token here"))
+        XCTAssertEqual(s.query(.init(textQuery: "shared token")).count, 2)
+        XCTAssertEqual(s.query(.init(textQuery: "shared token", kind: .file)).count, 1)
+        XCTAssertEqual(s.query(.init(textQuery: "shared token", kind: .file)).first?.kind, .file)
     }
 }

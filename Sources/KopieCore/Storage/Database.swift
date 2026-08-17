@@ -47,7 +47,16 @@ public final class Database {
         }
     }
 
-    public func exec(_ sql: String) throws { _ = try run(sql, []) }
+    /// Runs a multi-statement SQL script (schema DDL). Unlike `run`, which only
+    /// prepares the first statement, this executes every statement in `sql`.
+    public func exec(_ sql: String) throws {
+        guard let db else { throw Error("db closed") }
+        let rc = sqlite3_exec(db, sql, nil, nil, nil)
+        if rc != SQLITE_OK {
+            let m = String(cString: sqlite3_errmsg(db))
+            throw Error("exec: \(m)")
+        }
+    }
 
     @discardableResult
     public func run(_ sql: String, _ params: [Any?]) throws -> Int64 {
