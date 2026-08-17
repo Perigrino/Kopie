@@ -63,9 +63,22 @@ final class AppState: ObservableObject {
         // launch-time catch-up retention
         runRetentionPolicy(announce: false)
         if !defaults.bool(forKey: "hasSeenOnboarding") { showOnboarding = true }
-        else { monitor.start() }
+        else if defaults.object(forKey: "startMonitoring") as? Bool ?? true { monitor.start() }
+        startRetentionTimer()
     }
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        retentionTimer?.invalidate()
+    }
+
+    nonisolated(unsafe) private var retentionTimer: Timer?
+    private func startRetentionTimer() {
+        retentionTimer?.invalidate()
+        retentionTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            self?.runRetentionPolicy(announce: false)
+        }
+        RunLoop.main.add(retentionTimer!, forMode: .common)
+    }
 
     @objc private func storeChanged() { refresh() }
 
@@ -146,8 +159,14 @@ final class AppState: ObservableObject {
         items = store.query(f)
     }
 
-    func startMonitoring() { monitor.start(); isPaused = false; UserDefaults.standard.set(false, forKey: Self.pausedKey) }
-    func pauseMonitoring() { monitor.stop(); isPaused = true; UserDefaults.standard.set(true, forKey: Self.pausedKey) }
+    func startMonitoring() {
+        monitor.start(); isPaused = false; UserDefaults.standard.set(false, forKey: Self.pausedKey)
+        KopieNotifications.resumed()
+    }
+    func pauseMonitoring() {
+        monitor.stop(); isPaused = true; UserDefaults.standard.set(true, forKey: Self.pausedKey)
+        KopieNotifications.paused()
+    }
 
     func copyBack(_ item: ClipboardItem) {
         restoreSVC.restore(item, writer: writer)
@@ -157,7 +176,10 @@ final class AppState: ObservableObject {
     func toggleFavorite(_ item: ClipboardItem) { store.setFavorite(item.id, !item.isFavorite); refresh() }
     func remove(_ item: ClipboardItem) { store.delete([item.id]); refresh() }
     func remove(_ ids: [Int64]) { store.delete(ids); refresh() }
-    func removeAll() { store.clearAll(); refresh() }
+    func removeAll() {
+        store.clearAll(); refresh()
+        KopieNotifications.cleared()
+    }
 
     func runRetentionPolicy(announce: Bool) {
         let d = UserDefaults.standard
@@ -173,6 +195,7 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(true, forKey: "hasSeenOnboarding")
         showOnboarding = false
         startMonitoring()
+        runRetentionPolicy(announce: false)
     }
 }
 
