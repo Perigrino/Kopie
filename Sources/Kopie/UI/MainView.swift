@@ -13,6 +13,7 @@ struct MainView: View {
         switch selection {
         case .text: f.kind = .text
         case .images: f.kind = .image
+        case .files: f.kind = .file
         case .today: f.bucket = .today
         case .favorites: f.favoritesOnly = true
         default: break

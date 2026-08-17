@@ -219,7 +219,6 @@ struct PopoverView: View {
     }
 
     private func openMain() {
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         GlobalActions.openMain?()
     }

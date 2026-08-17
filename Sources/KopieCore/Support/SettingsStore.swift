@@ -18,6 +18,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let monitorPaused = "monitorPaused"
         public static let saveText = "saveText"
         public static let saveImages = "saveImages"
+        public static let saveFiles = "saveFiles"
         public static let ignoreDuplicates = "ignoreDuplicates"
         public static let maxItems = "maxItems"
         public static let excludedApps = "excludedApps"
@@ -103,9 +104,9 @@ public final class SettingsStore: @unchecked Sendable {
     /// Removes stored values whose type does not match the key's contract, so
     /// accessors always resolve to defaults instead of silently misreading.
     private func healInvalidTypes() {
-        let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.ignoreDuplicates,
-                        Keys.autoDeleteFavorites, Keys.launchAtLogin, Keys.showMenuBarIcon,
-                        Keys.startMonitoring, Keys.hasSeenOnboarding]
+        let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.saveFiles,
+                        Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
+                        Keys.showMenuBarIcon, Keys.startMonitoring, Keys.hasSeenOnboarding]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -155,6 +156,11 @@ public final class SettingsStore: @unchecked Sendable {
     public var saveImages: Bool {
         get { defaults.object(forKey: Keys.saveImages) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Keys.saveImages) }
+    }
+
+    public var saveFiles: Bool {
+        get { defaults.object(forKey: Keys.saveFiles) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.saveFiles) }
     }
 
     public var ignoreDuplicates: Bool {
@@ -250,6 +256,7 @@ public final class SettingsStore: @unchecked Sendable {
             paused: monitorPaused,
             saveText: saveText,
             saveImages: saveImages,
+            saveFiles: saveFiles,
             ignoreDuplicates: ignoreDuplicates,
             maxItems: maxItems,
             excludedAppIDs: excludedAppIDs)

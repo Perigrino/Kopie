@@ -21,6 +21,16 @@ public final class RestoreService {
                     board.setData(tiff, forType: .tiff)
                 }
             }
+        case .file:
+            let urls = (item.filePaths ?? []).map { URL(fileURLWithPath: $0) }
+            if !urls.isEmpty {
+                board.writeObjects(urls as [NSURL])
+                // Legacy apps expect the plain-paths flavor; add it alongside.
+                let filenames = NSPasteboard.PasteboardType("NSFilenamesPboardType")
+                if let paths = item.filePaths {
+                    board.setPropertyList(paths, forType: filenames)
+                }
+            }
         }
         _ = board.changeCount
     }

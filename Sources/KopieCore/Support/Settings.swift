@@ -36,16 +36,18 @@ public struct CaptureConfig: Sendable {
     public var paused: Bool
     public var saveText: Bool
     public var saveImages: Bool
+    public var saveFiles: Bool
     public var ignoreDuplicates: Bool
     public var maxItems: Int
     public var excludedAppIDs: Set<String>
 
     public init(paused: Bool = false, saveText: Bool = true, saveImages: Bool = true,
-                ignoreDuplicates: Bool = true, maxItems: Int = 1000,
+                saveFiles: Bool = true, ignoreDuplicates: Bool = true, maxItems: Int = 1000,
                 excludedAppIDs: Set<String> = []) {
         self.paused = paused
         self.saveText = saveText
         self.saveImages = saveImages
+        self.saveFiles = saveFiles
         self.ignoreDuplicates = ignoreDuplicates
         self.maxItems = maxItems
         self.excludedAppIDs = excludedAppIDs
