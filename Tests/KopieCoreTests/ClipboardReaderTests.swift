@@ -79,6 +79,24 @@ final class ClipboardReaderTests: XCTestCase {
         }
     }
 
+    /// A Finder file copy also drops the file's icon as TIFF on the pasteboard.
+    /// The file reference must win, otherwise the generic file-type glyph gets
+    /// captured as if it were the copied image.
+    func test_fileCopyWithIconTiff_prefersFile() {
+        withPasteboard {
+            let b = NSPasteboard.general
+            b.setString("file:///Users/alice/photo.png", forType: .fileURL)
+            let filenames = NSPasteboard.PasteboardType("NSFilenamesPboardType")
+            b.setPropertyList(["/Users/alice/photo.png"], forType: filenames)
+            let tiff = NSBitmapImageRep(data: png())!.representation(using: .tiff, properties: [:])!
+            b.setData(tiff, forType: .tiff)
+            let c = ClipboardReader.read()
+            XCTAssertEqual(c?.clipKind, .file)
+            XCTAssertEqual(c?.filePaths, ["/Users/alice/photo.png"])
+            XCTAssertNil(c?.imageData)
+        }
+    }
+
     func test_emptyPasteboard_isNil() {
         withPasteboard {
             XCTAssertNil(ClipboardReader.read())

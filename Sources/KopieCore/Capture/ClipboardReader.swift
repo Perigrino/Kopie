@@ -2,22 +2,27 @@ import Foundation
 import AppKit
 
 /// Reads the current system pasteboard into a `CapturedContent`.
-/// Image is preferred over text when both are present: copying an image in
-/// Safari/Chrome/Mail also drops a text representation (usually the image URL)
-/// on the pasteboard, so a text-first reader would silently store the URL
-/// instead of the image.
+///
+/// Priority: file references > image data > text.
+/// - File references win because a Finder file copy also drops the file's icon
+///   (often a generic file-type glyph) as TIFF on the pasteboard; capturing the
+///   icon instead of the file is why copied images looked like placeholder
+///   thumbnails. The pipeline resolves single image files to their real content.
+/// - Image data wins over text: copying an image in Safari/Chrome/Mail also
+///   drops a text representation (usually the image URL), which would otherwise
+///   be stored instead of the image.
 public enum ClipboardReader {
     public static func read(sourceAppID: String? = nil) -> CapturedContent? {
         let board = NSPasteboard.general
         let app = sourceAppID ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        if let paths = filePaths(from: board) {
+            return CapturedContent(kind: .files(paths), sourceAppID: app)
+        }
         if let png = board.data(forType: .png) {
             return CapturedContent(kind: .image(png), sourceAppID: app)
         }
         if let tiff = board.data(forType: .tiff) {
             return CapturedContent(kind: .image(tiff), sourceAppID: app)
-        }
-        if let paths = filePaths(from: board) {
-            return CapturedContent(kind: .files(paths), sourceAppID: app)
         }
         if let s = board.string(forType: .string) {
             return CapturedContent(kind: .text(s), sourceAppID: app)
