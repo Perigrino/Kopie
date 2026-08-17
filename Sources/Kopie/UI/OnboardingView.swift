@@ -4,28 +4,28 @@ import KopieCore
 struct OnboardingView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var step = 0
     @State private var retention = RetentionPeriod.daySeven
 
     var body: some View {
         VStack(spacing: 0) {
-            TabView(selection: $step) {
-                stepView(0, symbol: "doc.on.clipboard",
-                         title: "Meet Kopie",
-                         message: "Your clipboard history, always within reach.")
-                stepView(1, symbol: "square.stack.3d.up",
-                         title: "Everything you copy, organized",
-                         message: "Kopie can save text and images copied on your Mac.")
-                stepView(2, symbol: "hand.raised",
-                         title: "Private by design",
-                         message: "Your clipboard history stays on your Mac.")
-                retentionStep
-                    .tag(3)
-                finalStep
-                    .tag(4)
+            // Plain pager (no TabView — macOS would render a top tab picker,
+            // duplicating the bottom Back/dots/Continue progress indicator).
+            Group {
+                switch step {
+                case 0: LandingView()
+                case 1: stepView(1, symbol: "square.stack.3d.up",
+                                 title: "Everything you copy, organized",
+                                 message: "Kopie can save text and images copied on your Mac.")
+                case 2: stepView(2, symbol: "hand.raised",
+                                 title: "Private by design",
+                                 message: "Your clipboard history stays on your Mac.")
+                case 3: retentionStep
+                default: finalStep
+                }
             }
-            .tabViewStyle(.automatic)
-            .frame(width: 480, height: 320)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
             HStack {
@@ -53,6 +53,10 @@ struct OnboardingView: View {
             .padding(16)
         }
         .frame(width: 520, height: 420)
+        // Same breathing pastel base as LandingView, so the background effect
+        // covers the whole window — including the bottom Back/dots/Continue
+        // strip — instead of leaving white gaps around the landing.
+        .background(BreathingBackground(reduceMotion: reduceMotion))
     }
 
     private func stepView(_ tag: Int, symbol: String, title: String, message: String) -> some View {
