@@ -17,7 +17,7 @@ final class HotKeyManager {
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed))
-        var handlerUPP: EventHandlerUPP = { _, _, _ in
+        let handlerUPP: EventHandlerUPP = { _, _, _ in
             HotKeyManager.handler?()
             return noErr
         }
@@ -25,7 +25,7 @@ final class HotKeyManager {
             return false
         }
 
-        var hotKeyID = EventHotKeyID(signature: OSType(0x4B4F5045), id: 1) // "KOPE"
+        let hotKeyID = EventHotKeyID(signature: OSType(0x4B4F5045), id: 1) // "KOPE"
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetEventDispatcherTarget(), 0, &hotKeyRef)
         if status != noErr {
             unregister()
@@ -40,5 +40,4 @@ final class HotKeyManager {
         handler = nil
     }
 
-    static func isRegistered() -> Bool { hotKeyRef != nil }
 }

@@ -19,7 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Kopie")
             button.image?.isTemplate = true
             button.target = self
-            button.action = #selector(togglePopover)
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         popover = NSPopover()
         popover.contentSize = NSSize(width: 340, height: 640)
@@ -41,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         registerHotKey()
         NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
-            self?.registerHotKey()
+            MainActor.assumeIsolated { self?.registerHotKey() }
         }
 
         if state.showOnboarding {
@@ -107,6 +108,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             state.refresh()
         }
     }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { togglePopover(); return }
+        if event.type == .rightMouseUp {
+            popover.performClose(nil)
+            statusItem.menu = buildStatusMenu()
+            sender.performClick(nil)
+            statusItem.menu = nil
+        } else {
+            togglePopover()
+        }
+    }
+
+    private func buildStatusMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Open Kopie", action: #selector(openFromMenu), keyEquivalent: "o")
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Kopie", action: #selector(quitFromMenu), keyEquivalent: "q")
+        menu.items.forEach { $0.target = self }
+        return menu
+    }
+
+    @objc private func openFromMenu() { GlobalActions.openMain?() }
+    @objc private func openSettingsFromMenu() { showSettings() }
+    @objc private func quitFromMenu() { NSApp.terminate(nil) }
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
     func showFromHotKey() { togglePopover() }
 

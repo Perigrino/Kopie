@@ -61,7 +61,7 @@ final class AppState: ObservableObject {
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged),
                                                name: .kopieStoreChanged, object: nil)
         // launch-time catch-up retention
-        runRetentionPolicy(announce: false)
+        runRetentionPolicy()
         if !defaults.bool(forKey: "hasSeenOnboarding") { showOnboarding = true }
         else if defaults.object(forKey: "startMonitoring") as? Bool ?? true { monitor.start() }
         startRetentionTimer()
@@ -75,7 +75,7 @@ final class AppState: ObservableObject {
     private func startRetentionTimer() {
         retentionTimer?.invalidate()
         retentionTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            self?.runRetentionPolicy(announce: false)
+            MainActor.assumeIsolated { self?.runRetentionPolicy() }
         }
         RunLoop.main.add(retentionTimer!, forMode: .common)
     }
@@ -181,13 +181,12 @@ final class AppState: ObservableObject {
         KopieNotifications.cleared()
     }
 
-    func runRetentionPolicy(announce: Bool) {
+    func runRetentionPolicy() {
         let d = UserDefaults.standard
         let p = RetentionPeriod(rawValue: d.object(forKey: "retentionPeriod") as? Int ?? 7) ?? .daySeven
         let delFav = d.bool(forKey: "autoDeleteFavorites")
         job.run(config: RetentionConfig(period: p, deleteFavorites: delFav))
         refresh()
-        _ = announce
     }
 
     func finishOnboarding(retention: RetentionPeriod) {
@@ -195,7 +194,7 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(true, forKey: "hasSeenOnboarding")
         showOnboarding = false
         startMonitoring()
-        runRetentionPolicy(announce: false)
+        runRetentionPolicy()
     }
 }
 

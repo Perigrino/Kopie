@@ -48,7 +48,6 @@ struct MainView: View {
                     Section(group.label) {
                         ForEach(group.items) { item in
                             HistoryRow(item: item,
-                                       isPaused: state.isPaused,
                                        thumbnail: state.thumbnail(for: item),
                                        onCopy: { copy(item) },
                                        onRemove: { state.remove(item) },

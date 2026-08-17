@@ -3,7 +3,8 @@ import AppKit
 
 /// Observes the system pasteboard's changeCount on a low-frequency timer.
 /// Idle cost is a single integer compare; the read path only runs on change.
-public final class ClipboardMonitor {
+/// Only ever ticked on the main run loop (timer added to `RunLoop.main`).
+public final class ClipboardMonitor: @unchecked Sendable {
     private let read: () -> CapturedContent?
     private let handle: (CapturedContent) -> Void
     private var timer: Timer?
