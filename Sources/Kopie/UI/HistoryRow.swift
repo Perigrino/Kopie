@@ -7,6 +7,7 @@ struct HistoryRow: View {
     var thumbnail: NSImage?
     var selectionMode: Bool = false
     var isSelected: Bool = false
+    var isHighlighted: Bool = false
     var onCopy: () -> Void
     var onRemove: () -> Void
     var onFavorite: () -> Void
@@ -43,8 +44,14 @@ struct HistoryRow: View {
             }
         }
         .padding(8)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear,
+        .background(backgroundFill,
                     in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            if isHighlighted && !selectionMode {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1)
+            }
+        }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .modifier(TapAction(enabled: selectionMode || copyOnTap) {
@@ -83,6 +90,12 @@ struct HistoryRow: View {
                 .frame(width: 40, height: 40)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var backgroundFill: Color {
+        if selectionMode && isSelected { Color.accentColor.opacity(0.12) }
+        else if isHighlighted { Color.accentColor.opacity(0.08) }
+        else { Color.clear }
     }
 
     @ViewBuilder private var quickButtons: some View {

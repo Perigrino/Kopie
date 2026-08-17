@@ -29,19 +29,23 @@ struct Sidebar: View {
 
     var body: some View {
         List(selection: $selection) {
+            Section {
+                HStack(spacing: 8) {
+                    Image(nsImage: AppIcon.image(pointSize: 18))
+                    Text("Kopie").font(.headline)
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
             Section("History") {
                 ForEach(HistoryFilter.allCases) { f in
                     Label(f.label, systemImage: f.symbol).tag(f)
                 }
             }
             Section {
-                Button {
-                    GlobalActions.openSettings?()
-                } label: {
+                SettingsLink {
                     Label("Settings…", systemImage: "gearshape")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
             }
         }
         .listStyle(.sidebar)
