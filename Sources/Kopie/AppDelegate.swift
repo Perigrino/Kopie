@@ -30,6 +30,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         state.objectWillChange.sink { [weak self] _ in self?.applyVisibility() }
             .store(in: &cancellables)
         applyVisibility()
+
+        registerHotKey()
+        NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.registerHotKey()
+        }
+    }
+
+    private func registerHotKey() {
+        let spec = UserDefaults.standard.hotKeySpec
+        let ok = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
+            MainActor.assumeIsolated { self?.showFromHotKey() }
+        }
+        _ = ok
     }
     private func applyVisibility() { statusItem.isVisible = visibleFromSettings() }
     private func visibleFromSettings() -> Bool {
