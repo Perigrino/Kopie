@@ -15,6 +15,11 @@ public protocol HistoryCrypto {
     /// must be self-describing enough for `decrypt` to recover the input.
     func encrypt(_ data: Data) throws -> Data
     func decrypt(_ data: Data) -> Data?
+
+    /// Deterministic keyed hashes of the text's trigram shingles, used to build
+    /// a searchable index without storing plaintext — search never decrypts
+    /// non-matching rows. Must be stable across launches for the same text.
+    func searchTokens(for text: String) -> [Data]
 }
 
 /// AES-256-GCM with a random 256-bit key stored in the Keychain.
@@ -27,12 +32,20 @@ public final class KeychainHistoryCrypto: HistoryCrypto {
     public static let keychainAccount = "history-encryption-key"
 
     private let key: SymmetricKey
+    /// Separate key for the search index (derived, never stored separately).
+    private let searchKey: SymmetricKey
 
     /// Loads the existing key, or creates and stores a new one on first use.
     /// Throws only if the Keychain is unavailable and no key can be created.
     public init() throws {
         guard let k = Self.loadOrCreateKey() else { throw HistoryCryptoError.keychainUnavailable }
         self.key = k
+        self.searchKey = Self.deriveSearchKey(from: k)
+    }
+
+    private static func deriveSearchKey(from key: SymmetricKey) -> SymmetricKey {
+        let material = key.withUnsafeBytes { Data($0) } + Data("kopie-search-index".utf8)
+        return SymmetricKey(data: SHA256.hash(data: material))
     }
 
     private static func loadOrCreateKey() -> SymmetricKey? {
@@ -75,6 +88,34 @@ public final class KeychainHistoryCrypto: HistoryCrypto {
     public func decrypt(_ data: Data) -> Data? {
         guard let box = try? AES.GCM.SealedBox(combined: data) else { return nil }
         return try? AES.GCM.open(box, using: key)
+    }
+
+    public func searchTokens(for text: String) -> [Data] {
+        SearchTokens.shingles(SearchTokens.normalize(text)).map { SearchTokens.hmac($0, key: searchKey) }
+    }
+}
+
+/// Trigram shingles + keyed hashing for the encrypted search index.
+public enum SearchTokens {
+    /// Case- and diacritic-insensitive normalization, matching the behavior of
+    /// the in-memory substring filter used to verify candidates.
+    public static func normalize(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
+            .lowercased()
+    }
+
+    /// All 3-character shingles of the normalized text (spaces count, so word
+    /// boundaries are preserved). Strings shorter than 3 characters produce no
+    /// shingles; searches for such short queries fall back to plain filtering.
+    public static func shingles(_ normalized: String) -> [String] {
+        let chars = Array(normalized)
+        guard chars.count >= 3 else { return [] }
+        return (0...(chars.count - 3)).map { String(chars[$0..<$0 + 3]) }
+    }
+
+    public static func hmac(_ shingle: String, key: SymmetricKey) -> Data {
+        HMAC<SHA256>.authenticationCode(for: Data(shingle.utf8), using: key)
+            .withUnsafeBytes { Data($0) }
     }
 }
 

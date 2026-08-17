@@ -27,6 +27,14 @@ public final class ClipStore {
     CREATE INDEX IF NOT EXISTS idx_ci_created ON clipboard_items(created_at);
     CREATE INDEX IF NOT EXISTS idx_ci_kind ON clipboard_items(kind);
     CREATE INDEX IF NOT EXISTS idx_ci_hash ON clipboard_items(content_hash);
+    -- Encrypted search index: keyed hashes of text trigram shingles. No
+    -- plaintext is stored; searches match candidate ids by hash, then verify
+    -- by decrypting only those rows.
+    CREATE TABLE IF NOT EXISTS search_index(
+      item_id INTEGER NOT NULL,
+      token BLOB NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_search_token ON search_index(token);
+    CREATE INDEX IF NOT EXISTS idx_search_item ON search_index(item_id);
     """
 
     /// - Parameter crypto: encryption for at-rest text. `nil` auto-selects the
@@ -53,6 +61,7 @@ public final class ClipStore {
         self.crypto = crypto ?? (try? KeychainHistoryCrypto())
         self.encryptionAvailable = self.crypto != nil
         migrateLegacyPlaintext()
+        backfillSearchIndex()
     }
 
     public init(database: Database, baseDir: URL, crypto: HistoryCrypto? = nil) {
@@ -61,6 +70,7 @@ public final class ClipStore {
         self.crypto = crypto ?? (try? KeychainHistoryCrypto())
         self.encryptionAvailable = self.crypto != nil
         migrateLegacyPlaintext()
+        backfillSearchIndex()
     }
 
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
@@ -92,6 +102,37 @@ public final class ClipStore {
         }
     }
 
+    /// Indexes any rows (legacy or newer) that lack search-index entries. Runs
+    /// at open; a no-op once the whole history is indexed.
+    private func backfillSearchIndex() {
+        guard crypto != nil else { return }
+        let rows = (try? db.rows("""
+        SELECT id, text_content FROM clipboard_items
+        WHERE text_content IS NOT NULL
+          AND id NOT IN (SELECT DISTINCT item_id FROM search_index)
+        """, [])) ?? []
+        for r in rows {
+            guard let id = r[0] as? Int64, let t = r[1] as? String else { continue }
+            if let tokens = crypto?.searchTokens(for: plainText(t)), !tokens.isEmpty {
+                indexTokens(tokens, for: id)
+            }
+        }
+    }
+
+    /// Inserts the token set for one item as a single batched statement.
+    private func indexTokens(_ tokens: [Data], for id: Int64) {
+        guard !tokens.isEmpty else { return }
+        let values = tokens.map { _ in "(?,?)" }.joined(separator: ",")
+        var params: [Any?] = []
+        for t in tokens { params.append(id); params.append(t) }
+        _ = try? db.run("INSERT INTO search_index(item_id, token) VALUES \(values)", params)
+    }
+
+    /// Removes index rows that point at items that no longer exist.
+    private func sweepOrphanIndex() {
+        _ = try? db.run("DELETE FROM search_index WHERE item_id NOT IN (SELECT id FROM clipboard_items)", [])
+    }
+
     @discardableResult
     public func insert(_ item: ClipboardItem) -> Int64 {
         do {
@@ -100,7 +141,11 @@ public final class ClipStore {
         [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
          item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
          item.width.flatMap(Int64.init), item.height.flatMap(Int64.init)])
-            return db.scalarInt64("SELECT last_insert_rowid()")
+            let id = db.scalarInt64("SELECT last_insert_rowid()")
+            if let text = item.text, let tokens = crypto?.searchTokens(for: text), !tokens.isEmpty {
+                indexTokens(tokens, for: id)
+            }
+            return id
         } catch {
             bootstrapError = "\(error)"
             return -1
@@ -127,6 +172,9 @@ public final class ClipStore {
     }
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
+        if !f.textQuery.isEmpty, let indexed = searchIndexMatches(f) {
+            return indexed
+        }
         var whereC = [String](); var params: [Any?] = []
         if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
         if f.favoritesOnly { whereC.append("is_favorite = 1") }
@@ -144,9 +192,8 @@ public final class ClipStore {
             }
         }
         let whereSQL = whereC.isEmpty ? "" : "WHERE " + whereC.joined(separator: " AND ")
-        // Text search runs in memory after decryption — SQL LIKE can't match
-        // ciphertext. Fetch a generous window when searching so older matches
-        // aren't cut off by the row limit.
+        // No index available (no key, or query shorter than a trigram): fetch a
+        // generous window and filter in memory after decryption.
         let limit = f.textQuery.isEmpty ? f.limit : max(f.limit, 1000)
         let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY last_accessed_at DESC, id DESC LIMIT ?"
         params.append(limit)
@@ -156,6 +203,47 @@ public final class ClipStore {
             let q = f.textQuery
             items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(q) }
         }
+        return items
+    }
+
+    /// Index-backed text search: matches token hashes in SQL, then decrypts and
+    /// verifies only the candidate rows. Returns nil when the index can't be
+    /// used, so the caller falls back to the windowed path.
+    private func searchIndexMatches(_ f: QueryFilter) -> [ClipboardItem]? {
+        guard let search = crypto else { return nil }
+        let tokens = search.searchTokens(for: f.textQuery)
+        guard !tokens.isEmpty else { return nil }
+        let distinct = Array(Set(tokens))
+
+        var whereC = [String](); var params: [Any?] = []
+        if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
+        if f.favoritesOnly { whereC.append("is_favorite = 1") }
+        if let b = f.bucket {
+            let cal = Calendar.current
+            let now = Date.now
+            if b == .today {
+                whereC.append("created_at >= ?"); params.append(ms(cal.startOfDay(for: now)))
+            } else if b == .yesterday {
+                let yest = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: now))!
+                whereC.append("created_at >= ? AND created_at < ?")
+                params.append(ms(yest)); params.append(ms(cal.startOfDay(for: now)))
+            } else if b == .older {
+                whereC.append("created_at < ?"); params.append(ms(cal.startOfDay(for: now)))
+            }
+        }
+        let placeholders = distinct.map { _ in "?" }.joined(separator: ",")
+        whereC.append("id IN (SELECT item_id FROM search_index WHERE token IN (\(placeholders)) " +
+                      "GROUP BY item_id HAVING COUNT(DISTINCT token) = ?)")
+        params += distinct.map { $0 as Any? }
+        params.append(Int64(distinct.count))
+
+        let sql = "SELECT \(Self.cols) FROM clipboard_items " +
+                  "WHERE \(whereC.joined(separator: " AND ")) " +
+                  "ORDER BY last_accessed_at DESC, id DESC LIMIT ?"
+        params.append(max(f.limit, 1000))
+        let rows = (try? db.rows(sql, params)) ?? []
+        var items = rows.map { map($0) }
+        items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(f.textQuery) }
         return items
     }
 
@@ -173,11 +261,15 @@ public final class ClipStore {
         _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
     }
     public func delete(_ ids: [Int64]) {
-        for id in ids { _ = try? db.run("DELETE FROM clipboard_items WHERE id = ?", [id]) }
+        for id in ids {
+            _ = try? db.run("DELETE FROM clipboard_items WHERE id = ?", [id])
+            _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
+        }
     }
     @discardableResult
     public func clearAll() -> Int64 {
-        (try? db.run("DELETE FROM clipboard_items", [])) ?? 0
+        _ = try? db.run("DELETE FROM search_index", [])
+        return (try? db.run("DELETE FROM clipboard_items", [])) ?? 0
     }
     public func count() -> Int64 { db.scalarInt64("SELECT COUNT(*) FROM clipboard_items") }
 
@@ -198,7 +290,9 @@ public final class ClipStore {
 
     public func purgeOlder(olderThan cutoff: Date, deleteFavorites: Bool) -> Int64 {
         let cond = deleteFavorites ? "" : "AND is_favorite = 0"
-        return (try? db.run("DELETE FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)])) ?? 0
+        let n = (try? db.run("DELETE FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)])) ?? 0
+        sweepOrphanIndex()
+        return n
     }
 
     public func trimToMax(_ max: Int) {
@@ -214,6 +308,7 @@ public final class ClipStore {
           LIMIT \(max)
         )
         """, [])
+        sweepOrphanIndex()
     }
 
     // MARK: - One-time cleanups
@@ -252,5 +347,6 @@ public final class ClipStore {
         WHERE id = ?
         """, [imageRelPath, thumbRelPath, Int64(fileSize), width.flatMap(Int64.init),
               height.flatMap(Int64.init), id])
+        _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
     }
 }
