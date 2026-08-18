@@ -20,3 +20,4 @@ jobs:
 
       - name: Headless acceptance workflow
         run: bash scripts/acceptance.sh
+        timeout-minutes: 5
