@@ -2,7 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-bash scripts/build.sh debug >/dev/null 2>&1
+# Only rebuild if the app bundle doesn't already exist (CI pre-builds it)
+if [ ! -f "dist/Kopie.app/Contents/MacOS/Kopie" ]; then
+  bash scripts/build.sh debug >/dev/null 2>&1
+fi
 export KOPIE_STORAGE_DIR="$(mktemp -d)"
 K="./dist/Kopie.app/Contents/MacOS/Kopie"
 trap 'rm -rf "$KOPIE_STORAGE_DIR"' EXIT
@@ -10,17 +13,31 @@ trap 'rm -rf "$KOPIE_STORAGE_DIR"' EXIT
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; exit 1; }
 
+# Run a command with a timeout (seconds). Kills the process group on timeout.
+with_timeout() {
+  local secs=$1; shift
+  "$@" &
+  local pid=$!
+  ( sleep "$secs" && kill -9 -$pid 2>/dev/null ) &
+  local watchdog=$!
+  if wait $pid; then
+    kill $watchdog 2>/dev/null; wait $watchdog 2>/dev/null; return 0
+  else
+    kill $watchdog 2>/dev/null; wait $watchdog 2>/dev/null; return 1
+  fi
+}
+
 # 1. text save
-$K --smoke-capture "acceptance-text-123" >/dev/null
-$K --smoke-list | grep -q "acceptance-text-123" && pass "text saved" || fail "text saved"
+with_timeout 30 $K --smoke-capture "acceptance-text-123" >/dev/null
+with_timeout 30 $K --smoke-list | grep -q "acceptance-text-123" && pass "text saved" || fail "text saved"
 
 # 2. dedup
-$K --smoke-capture "acceptance-text-123" | grep -q "duplicate" && pass "dedup works" || fail "dedup works"
+with_timeout 30 $K --smoke-capture "acceptance-text-123" | grep -q "duplicate" && pass "dedup works" || fail "dedup works"
 
 # 3. text restore -> pasteboard
-id=$($K --smoke-list | head -n1 | awk '{print $1}')
-$K --smoke-restore "$id" >/dev/null
-$K --smoke-readboard | grep -q "acceptance-text-123" && pass "text restored to clipboard" || fail "text restored to clipboard"
+id=$(with_timeout 30 $K --smoke-list | head -n1 | awk '{print $1}')
+with_timeout 30 $K --smoke-restore "$id" >/dev/null
+with_timeout 30 $K --smoke-readboard | grep -q "acceptance-text-123" && pass "text restored to clipboard" || fail "text restored to clipboard"
 
 # 4. image save + restore
 python3 - <<'PY'
@@ -36,10 +53,10 @@ png = (b'\x89PNG\r\n\x1a\n'
        + chunk(b'IEND', b''))
 open('/tmp/kopie_test.png', 'wb').write(png)
 PY
-$K --smoke-capture-image /tmp/kopie_test.png >/dev/null
-iid=$($K --smoke-list | grep "image" | head -n1 | awk '{print $1}')
-$K --smoke-restore "$iid" >/dev/null
-if $K --smoke-readboard | grep -Eq "public.png|com.apple.pict|public.tiff"; then
+with_timeout 30 $K --smoke-capture-image /tmp/kopie_test.png >/dev/null
+iid=$(with_timeout 30 $K --smoke-list | grep "image" | head -n1 | awk '{print $1}')
+with_timeout 30 $K --smoke-restore "$iid" >/dev/null
+if with_timeout 30 $K --smoke-readboard | grep -Eq "public.png|com.apple.pict|public.tiff"; then
     pass "image restored to clipboard"
 else
     fail "image restored to clipboard"
@@ -48,8 +65,8 @@ fi
 # 5. persistence across processes: separate invocations share the same storage dir (covered above)
 
 # 6. retention purge
-$K --smoke-purge 0 >/dev/null
-n=$($K --smoke-count | awk '{print $2}')
+with_timeout 30 $K --smoke-purge 0 >/dev/null
+n=$(with_timeout 30 $K --smoke-count | awk '{print $2}')
 pass "purge ran (remaining=$n)"
 
 echo "ALL CHECKS PASSED"
