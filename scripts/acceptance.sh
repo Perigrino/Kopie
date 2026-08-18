@@ -13,18 +13,10 @@ trap 'rm -rf "$KOPIE_STORAGE_DIR"' EXIT
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; exit 1; }
 
-# Run a command with a timeout (seconds). Kills the process group on timeout.
+# Run a command with a timeout (seconds).
 with_timeout() {
   local secs=$1; shift
-  "$@" &
-  local pid=$!
-  ( sleep "$secs" && kill -9 -$pid 2>/dev/null ) &
-  local watchdog=$!
-  if wait $pid; then
-    kill $watchdog 2>/dev/null; wait $watchdog 2>/dev/null; return 0
-  else
-    kill $watchdog 2>/dev/null; wait $watchdog 2>/dev/null; return 1
-  fi
+  perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
 }
 
 # 1. text save
