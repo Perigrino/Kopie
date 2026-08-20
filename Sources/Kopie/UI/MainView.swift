@@ -30,7 +30,7 @@ struct MainView: View {
             if let item = filtered.first(where: { $0.id == selectedID }) {
                 DetailsPanel(item: item)
             } else {
-                ContentUnavailableView("Select an item", systemImage: "square.stack", description: Text("Choose an item from your history to see its details."))
+                EmptyStateView(symbol: "square.stack", title: "Select an item", message: "Choose an item from your history to see its details.")
             }
         }
         .navigationTitle("Kopie")
@@ -40,10 +40,10 @@ struct MainView: View {
         List(selection: $selectedID) {
             let groups = groupByDay(filtered)
             if groups.isEmpty {
-                ContentUnavailableView(
-                    searchText.isEmpty ? "Nothing copied yet" : "Nothing found",
-                    systemImage: searchText.isEmpty ? "doc.on.clipboard" : "magnifyingglass",
-                    description: Text(searchText.isEmpty ? "Copy some text or an image and it will appear here." : "Try searching for something else."))
+                EmptyStateView(
+                    symbol: searchText.isEmpty ? "doc.on.clipboard" : "magnifyingglass",
+                    title: searchText.isEmpty ? "Nothing copied yet" : "Nothing found",
+                    message: searchText.isEmpty ? "Copy some text or an image and it will appear here." : "Try searching for something else.")
             } else {
                 ForEach(groups) { group in
                     Section(group.label) {

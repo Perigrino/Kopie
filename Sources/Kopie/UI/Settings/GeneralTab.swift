@@ -11,7 +11,7 @@ struct SettingsGeneralTab: View {
     var body: some View {
         Form {
             Toggle("Launch at login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, on in
+                .onChange(of: launchAtLogin) { on in
                     applyLaunchAtLogin(on)
                 }
             Toggle("Show menu bar icon", isOn: $showMenuBarIcon)

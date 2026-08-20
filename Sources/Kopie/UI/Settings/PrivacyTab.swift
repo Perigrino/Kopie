@@ -7,44 +7,45 @@ struct SettingsPrivacyTab: View {
     @State private var showClearAllConfirm = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Ignored apps")
-                .font(.headline)
-            Text("Copies made while one of these apps is frontmost are never stored.")
-                .font(.caption).foregroundStyle(.secondary)
-            List {
-                ForEach(state.excludedApps) { app in
-                    HStack {
-                        Text(app.name.isEmpty ? app.id : app.name)
-                        Text(app.id).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            state.removeExcludedApp(id: app.id)
-                        } label: {
-                            Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Ignored apps")
+                    .font(.headline)
+                Text("Copies made while one of these apps is frontmost are never stored.")
+                    .font(.caption).foregroundStyle(.secondary)
+                List {
+                    ForEach(state.excludedApps) { app in
+                        HStack {
+                            Text(app.name.isEmpty ? app.id : app.name)
+                            Text(app.id).font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                state.removeExcludedApp(id: app.id)
+                            } label: {
+                                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+                .frame(minHeight: 120)
+                HStack {
+                    Button("Add Ignored App…") { showAddSheet = true }
+                    Spacer()
+                }
+                Divider()
+                Toggle("Pause monitoring", isOn: Binding(
+                    get: { state.isPaused },
+                    set: { on in on ? state.pauseMonitoring() : state.startMonitoring() }))
+                Button("Clear All Data…", role: .destructive) { showClearAllConfirm = true }
+                Divider()
+                Text("Your clipboard stays on your Mac. Kopie does not upload or share your clipboard history.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(minHeight: 120)
-            HStack {
-                Button("Add Ignored App…") { showAddSheet = true }
-                Spacer()
-            }
-            Divider()
-            Toggle("Pause monitoring", isOn: Binding(
-                get: { state.isPaused },
-                set: { on in on ? state.pauseMonitoring() : state.startMonitoring() }))
-            Button("Clear All Data…", role: .destructive) { showClearAllConfirm = true }
-            Divider()
-            Text("Your clipboard stays on your Mac. Kopie does not upload or share your clipboard history.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+            .padding(20)
         }
-        .padding(20)
         .sheet(isPresented: $showAddSheet) {
             AddExcludedAppSheet { bundleID, name in
                 state.addExcludedApp(bundleID: bundleID, name: name)
@@ -83,7 +84,7 @@ private struct AddExcludedAppSheet: View {
                     Text(app.localizedName ?? app.bundleIdentifier ?? "?").tag(NSRunningApplication?.some(app))
                 }
             }
-            .onChange(of: picked) { _, app in
+            .onChange(of: picked) { app in
                 if let app {
                     manualName = app.localizedName ?? ""
                     manualBundleID = app.bundleIdentifier ?? ""

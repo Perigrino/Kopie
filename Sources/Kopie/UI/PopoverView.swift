@@ -30,30 +30,12 @@ struct PopoverView: View {
             DispatchQueue.main.async { searchFocused = true }
             highlightedIndex = state.items.isEmpty ? nil : 0
         }
-        .onChange(of: state.searchText) {
+        .onChange(of: state.searchText) { _ in
             state.refresh()
             highlightedIndex = state.items.isEmpty ? nil : 0
         }
-        .onKeyPress(.upArrow) { moveHighlight(-1); return .handled }
-        .onKeyPress(.downArrow) { moveHighlight(1); return .handled }
-        .onKeyPress(.return) { copyHighlighted(); return .handled }
-        .onKeyPress(.escape) {
-            if !state.searchText.isEmpty {
-                state.searchText = ""
-                state.refresh()
-            } else {
-                GlobalActions.closePopover?()
-            }
-            return .handled
-        }
-        .onKeyPress(.delete) {
-            if let idx = highlightedIndex, state.items.indices.contains(idx) {
-                state.remove(state.items[idx])
-                highlightedIndex = min(idx, state.items.count - 1)
-                return .handled
-            }
-            return .ignored
-        }
+        .onAppear { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
         .overlay(alignment: .bottom) {
             if showToast {
                 CopiedToast().padding(.bottom, 12)
@@ -97,7 +79,7 @@ struct PopoverView: View {
             }
         }
         .padding(10).padding(.horizontal, DS.pad).padding(.bottom, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
     }
 
     @ViewBuilder private var content: some View {
@@ -142,7 +124,7 @@ struct PopoverView: View {
                 }
                 .frame(height: 360)
                 .overlay(alignment: .top) { imagePreview }
-                .onChange(of: highlightedIndex) {
+                .onChange(of: highlightedIndex) { _ in
                     guard let i = highlightedIndex, state.items.indices.contains(i) else { return }
                     previewID = state.items[i].kind == .image ? state.items[i].id : nil
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -200,7 +182,7 @@ struct PopoverView: View {
                     .disabled(selectedIDs.isEmpty)
             } else {
                 Button("Open Kopie") { openMain() }
-                SettingsLink { Text("Settings…") }
+                Button("Settings…") { openSettings() }
                 Spacer()
                 Button("Select") { withAnimation { selectionMode = true } }
                     .disabled(state.items.isEmpty)
@@ -259,5 +241,49 @@ struct PopoverView: View {
     private func openMain() {
         NSApp.activate(ignoringOtherApps: true)
         GlobalActions.openMain?()
+    }
+
+    private func openSettings() {
+        GlobalActions.openSettings?()
+    }
+
+    // MARK: - macOS 13 keyboard handling
+
+    @State private var keyMonitor: Any?
+
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            switch event.keyCode {
+            case 126: moveHighlight(-1); return nil   // up arrow
+            case 125: moveHighlight(1); return nil     // down arrow
+            case 36:  copyHighlighted(); return nil    // return
+            case 53:  handleEscape(); return nil       // escape
+            case 51:  handleDelete(); return event     // delete (pass through if nothing to delete)
+            default:  return event
+            }
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    private func handleEscape() {
+        if !state.searchText.isEmpty {
+            state.searchText = ""
+            state.refresh()
+        } else {
+            GlobalActions.closePopover?()
+        }
+    }
+
+    private func handleDelete() {
+        if let idx = highlightedIndex, state.items.indices.contains(idx) {
+            state.remove(state.items[idx])
+            highlightedIndex = min(idx, state.items.count - 1)
+        }
     }
 }
