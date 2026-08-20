@@ -6,6 +6,9 @@ Everything you copy, available when you need it.
 Spec: `docs/superpowers/specs/2026-08-16-kopie-design.md`
 Plan: `docs/superpowers/plans/2026-08-16-kopie.md`
 
+## Requirements
+- **macOS 13 Ventura** or later
+
 ## Features
 - Captures text and images copied anywhere on your Mac (menu-bar icon, `doc.on.clipboard`)
 - Live search + day-grouped history (Today / Yesterday / Older) with image thumbnails
