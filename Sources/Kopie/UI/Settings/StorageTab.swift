@@ -7,31 +7,32 @@ struct SettingsStorageTab: View {
     @State private var stats: (count: Int64, bytes: Int64) = (0, 0)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Group {
-                Text("Clipboard Items").font(.headline)
-                Text("\(stats.count)").font(.largeTitle.monospacedDigit())
-                Text("Storage Used").font(.headline).padding(.top, 8)
-                Text(ByteCountFormatter.string(fromByteCount: stats.bytes, countStyle: .file))
-                    .font(.largeTitle.monospacedDigit())
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Group {
+                    Text("Clipboard Items").font(.headline)
+                    Text("\(stats.count)").font(.largeTitle.monospacedDigit())
+                    Text("Storage Used").font(.headline).padding(.top, 8)
+                    Text(ByteCountFormatter.string(fromByteCount: stats.bytes, countStyle: .file))
+                        .font(.largeTitle.monospacedDigit())
+                }
+                if let err = state.storageError {
+                    Label("Storage error: \(err)", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.red)
+                }
+                Divider()
+                HStack {
+                    Button("Clear Cache…") { showClearCacheConfirm = true }
+                    Spacer()
+                    Button("Clear All Data…", role: .destructive) { showClearAllConfirm = true }
+                }
+                Text("Clear Cache removes regenerable thumbnails. Clear All Data removes every item and file.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            if let err = state.storageError {
-                Label("Storage error: \(err)", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(.red)
-            }
-            Divider()
-            HStack {
-                Button("Clear Cache…") { showClearCacheConfirm = true }
-                Spacer()
-                Button("Clear All Data…", role: .destructive) { showClearAllConfirm = true }
-            }
-            Text("Clear Cache removes regenerable thumbnails. Clear All Data removes every item and file.")
-                .font(.caption).foregroundStyle(.secondary)
-            Spacer()
+            .padding(20)
         }
-        .padding(20)
         .onAppear { stats = state.storageStats() }
-        .onChange(of: state.items.count) { stats = state.storageStats() }
+        .onChange(of: state.items.count) { _ in stats = state.storageStats() }
         .sheet(isPresented: $showClearCacheConfirm) {
             ConfirmDialog(
                 title: "Clear cache?",

@@ -9,11 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var mainWindow: NSWindow?
+    private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
-    /// Retains a hosting controller that captures the SwiftUI `openSettings`
-    /// action so the AppKit status menu can open the Settings scene natively.
-    private var settingsBridge: NSHostingController<SettingsBridge>?
+
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -31,16 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = NSHostingController(
             rootView: PopoverView().environmentObject(state))
 
-        // Capture the SwiftUI openSettings action for the AppKit status menu.
-        // The hosting view must live inside a real window (the status item's
-        // button) so onAppear fires at launch; an unattached hosting controller
-        // never appears and never captures the action.
-        let bridge = NSHostingController(rootView: SettingsBridge())
-        bridge.view.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
-        statusItem.button?.addSubview(bridge.view)
-        settingsBridge = bridge
-
         GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
+        GlobalActions.openSettings = { [weak self] in self?.showSettings() }
         GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
         GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
 
@@ -76,6 +67,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             mainWindow = win
         }
         mainWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func showSettings() {
+        if settingsWindow == nil {
+            let hosting = NSHostingController(rootView: SettingsView().environmentObject(state))
+            let win = NSWindow(contentViewController: hosting)
+            win.title = "Settings"
+            win.setContentSize(NSSize(width: 520, height: 420))
+            win.styleMask = [.titled, .closable]
+            win.isReleasedWhenClosed = false
+            win.center()
+            settingsWindow = win
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -141,31 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func openFromMenu() { GlobalActions.openMain?() }
-    @objc private func openSettingsFromMenu() {
-        // Prefer the SwiftUI openSettings action captured at launch; fall back
-        // to the standard responder-chain action for the Settings scene.
-        if let open = GlobalActions.openSettings {
-            open()
-        } else {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
-        NSApp.activate(ignoringOtherApps: true)
-    }
+    @objc private func openSettingsFromMenu() { showSettings() }
     @objc private func quitFromMenu() { NSApp.terminate(nil) }
 
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
 
-    func popoverDidShow(_ notification: Notification) {
-        // Re-capture the settings action if the status item was hidden at
-        // launch (its button — and the bridge — only exist once it's shown).
-        if GlobalActions.openSettings == nil,
-           let contentView = popover.contentViewController?.view {
-            let bridge = NSHostingController(rootView: SettingsBridge())
-            bridge.view.frame = .zero
-            contentView.addSubview(bridge.view)
-            settingsBridge = bridge
-        }
-    }
+    func popoverDidShow(_ notification: Notification) {}
 
     func showFromHotKey() { togglePopover() }
 

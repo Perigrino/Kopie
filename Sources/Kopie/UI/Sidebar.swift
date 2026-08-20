@@ -45,7 +45,9 @@ struct Sidebar: View {
                 }
             }
             Section {
-                SettingsLink {
+                Button {
+                    GlobalActions.openSettings?()
+                } label: {
                     Label("Settings…", systemImage: "gearshape")
                 }
             }

@@ -53,7 +53,7 @@ struct DetailsPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         } else {
-            ContentUnavailableView("Image unavailable", systemImage: "photo", description: Text("The image file could not be loaded."))
+            EmptyStateView(symbol: "photo", title: "Image unavailable", message: "The image file could not be loaded.")
         }
     }
 
@@ -68,7 +68,7 @@ struct DetailsPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .quaternarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func meta(_ label: String, _ value: String) -> some View {

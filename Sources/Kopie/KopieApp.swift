@@ -6,7 +6,7 @@ struct KopieApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView().environmentObject(appDelegate.state)
+            EmptyView()
         }
     }
 }
@@ -20,13 +20,4 @@ enum GlobalActions {
     static var closePopover: (() -> Void)?
 }
 
-/// Tiny always-alive view that captures the SwiftUI `openSettings` environment
-/// action and exposes it to AppKit (the status-item menu).
-struct SettingsBridge: View {
-    @Environment(\.openSettings) private var openSettings
-    var body: some View {
-        Color.clear
-            .frame(width: 1, height: 1)
-            .onAppear { GlobalActions.openSettings = { openSettings() } }
-    }
-}
+
