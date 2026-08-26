@@ -48,8 +48,10 @@ final class CapturePipelineTests: XCTestCase {
     }
     func test_duplicateSkipped() {
         _ = pipe.process(.init(kind: .text("same"), sourceAppID: nil), config: .default)
-        XCTAssertEqual(pipe.process(.init(kind: .text("same"), sourceAppID: nil), config: .default), .duplicate)
+        // Re-copying same content now increments copy count instead of creating a new item
+        XCTAssertEqual(pipe.process(.init(kind: .text("same"), sourceAppID: nil), config: .default), .recopied(1))
         XCTAssertEqual(store.count(), 1)
+        XCTAssertEqual(store.get(1)?.copyCount, 2)
     }
     func test_duplicateDisabledWhenOff() {
         var c = CaptureConfig(); c.ignoreDuplicates = false
@@ -127,6 +129,30 @@ final class CapturePipelineTests: XCTestCase {
     func test_filesDisabledWhenOff() {
         var c = CaptureConfig(); c.saveFiles = false
         XCTAssertEqual(pipe.process(.init(kind: .files(["/tmp/x"]), sourceAppID: nil), config: c), .disabledKind)
+    }
+    func test_sourceAppTracked() {
+        let r = pipe.process(.init(kind: .text("hello from Safari"), sourceAppID: "com.apple.Safari"), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        XCTAssertEqual(store.get(id)?.sourceApp, "com.apple.Safari")
+        XCTAssertEqual(store.get(id)?.copyCount, 1)
+        XCTAssertNil(store.get(id)?.lastCopiedAt)
+    }
+    func test_sourceAppNotTrackedWhenDisabled() {
+        var c = CaptureConfig(); c.trackSourceApp = false
+        let r = pipe.process(.init(kind: .text("hello"), sourceAppID: "com.apple.Safari"), config: c)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        XCTAssertNil(store.get(id)?.sourceApp)
+    }
+    func test_recopyIncrementsCountAndUpdatesTimestamp() {
+        let first = Date.now.addingTimeInterval(-10)
+        _ = pipe.process(.init(kind: .text("same"), sourceAppID: "com.apple.Safari"), config: .default, now: first)
+        let second = Date.now
+        let r = pipe.process(.init(kind: .text("same"), sourceAppID: "com.apple.Terminal"), config: .default, now: second)
+        XCTAssertEqual(r, .recopied(1))
+        let item = store.get(1)!
+        XCTAssertEqual(item.copyCount, 2)
+        XCTAssertNotNil(item.lastCopiedAt)
+        XCTAssertEqual(item.sourceApp, "com.apple.Terminal")
     }
     func test_differentTextThenImageBothCaptured() {
         _ = pipe.process(.init(kind: .text("some text"), sourceAppID: nil), config: .default)

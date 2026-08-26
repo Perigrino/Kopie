@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     @Published var searchText: String = ""
     @Published var isPaused: Bool = false
     @Published var showOnboarding: Bool = false
+    @Published var isReturnLaunch = false
     @Published var excludedApps: [SettingsStore.ExcludedApp] = []
     @Published var ambientSpeed: SettingsStore.AmbientSpeed = .slow
     let store: ClipStore
@@ -73,8 +74,15 @@ final class AppState: ObservableObject {
         OneTimeCleanup(store: store, writer: writer).run()
         // launch-time catch-up retention
         runRetentionPolicy()
-        if !settings.hasSeenOnboarding { showOnboarding = true }
-        else if settings.startMonitoring { monitor.start() }
+        // First-ever launch shows the full interactive onboarding;
+        // subsequent launches get a brief landing splash that auto-dismisses.
+        if settings.hasSeenOnboarding {
+            showOnboarding = true
+            isReturnLaunch = true
+        } else {
+            showOnboarding = true
+            isReturnLaunch = false
+        }
         startRetentionTimer()
     }
     deinit {

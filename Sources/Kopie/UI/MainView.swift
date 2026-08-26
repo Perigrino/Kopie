@@ -6,6 +6,8 @@ struct MainView: View {
     @State private var selection: HistoryFilter? = .all
     @State private var selectedID: Int64?
     @State private var searchText = ""
+    @State private var sidebarVisible: Bool = false
+    @State private var splitPosition: Double = SettingsStore.shared.splitPosition
 
     private var filtered: [ClipboardItem] {
         var f = QueryFilter()
@@ -22,19 +24,92 @@ struct MainView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            Sidebar(selection: $selection)
-        } content: {
+        HSplitView {
+            // Sidebar (visible only when toggled on)
+            if sidebarVisible {
+                sidebarContent
+                    .frame(minWidth: 170, idealWidth: 190)
+            }
+
+            // History list – 40% of available width
             list
-        } detail: {
-            if let item = filtered.first(where: { $0.id == selectedID }) {
-                DetailsPanel(item: item)
-            } else {
-                EmptyStateView(symbol: "square.stack", title: "Select an item", message: "Choose an item from your history to see its details.")
+                .frame(
+                    minWidth: 200,
+                    idealWidth: idealListWidth
+                )
+
+            // Detail panel – fills remaining space
+            detail
+                .frame(minWidth: 300)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation { sidebarVisible.toggle() }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .help(sidebarVisible ? "Hide sidebar" : "Show sidebar")
             }
         }
         .navigationTitle("Kopie")
+        .onAppear {
+            // Load persisted split position
+            splitPosition = SettingsStore.shared.splitPosition
+
+            // Auto-select the first item when the view appears
+            if selectedID == nil, let firstItem = filtered.first {
+                selectedID = firstItem.id
+            }
+        }
+        .onChange(of: filtered) { items in
+            // If the currently selected item is no longer visible, select the first one
+            if let selectedID, !items.contains(where: { $0.id == selectedID }) {
+                self.selectedID = items.first?.id
+            }
+        }
     }
+
+    // MARK: - Computed widths
+
+    /// Ideal width for the list column based on persisted split position.
+    private var idealListWidth: CGFloat {
+        let windowWidth: CGFloat = 1000 // Reference width for ideal sizing
+        return windowWidth * splitPosition
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebarContent: some View {
+        List(selection: $selection) {
+            Section {
+                HStack(spacing: 8) {
+                    Image(nsImage: AppIcon.image(pointSize: 18))
+                    Text("Kopie").font(.headline)
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+            Section("History") {
+                ForEach(HistoryFilter.allCases) { f in
+                    Label(f.label, systemImage: f.symbol).tag(f)
+                }
+            }
+            Section {
+                Button {
+                    GlobalActions.openSettings?()
+                } label: {
+                    Label("Settings…", systemImage: "gearshape")
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .onAppear {
+            if selection == nil { selection = .all }
+        }
+    }
+
+    // MARK: - List
 
     private var list: some View {
         List(selection: $selectedID) {
@@ -62,6 +137,18 @@ struct MainView: View {
         }
         .listStyle(.inset)
         .searchable(text: $searchText, prompt: "Search clipboard…")
+    }
+
+    // MARK: - Detail
+
+    private var detail: some View {
+        Group {
+            if let item = filtered.first(where: { $0.id == selectedID }) {
+                DetailsPanel(item: item)
+            } else {
+                EmptyStateView(symbol: "square.stack", title: "Select an item", message: "Choose an item from your history to see its details.")
+            }
+        }
     }
 
     private func copy(_ item: ClipboardItem) {

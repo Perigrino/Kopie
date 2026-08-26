@@ -59,7 +59,23 @@ struct DetailsPanel: View {
 
     private var metaGrid: some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
-            GridRow { meta("Copied", item.createdAt.formatted(date: .abbreviated, time: .standard)) }
+            // Source application
+            if item.sourceApp != nil {
+                GridRow { meta("Application", item.sourceAppName) }
+            }
+            
+            // Copy timestamps
+            GridRow { meta("First Copy", item.createdAt.formatted(date: .abbreviated, time: .standard)) }
+            if let lastCopy = item.lastCopiedAt {
+                GridRow { meta("Last Copy", lastCopy.formatted(date: .abbreviated, time: .standard)) }
+            }
+            
+            // Copy count (show only if > 1)
+            if item.copyCount > 1 {
+                GridRow { meta("Copies", item.copyCountLabel) }
+            }
+            
+            // Content-specific metadata
             if item.kind == .text, let c = item.charCount { GridRow { meta("Characters", "\(c)") } }
             if item.kind == .file, let n = item.filePaths?.count { GridRow { meta("Files", "\(n)") } }
             if item.kind == .image, let d = item.dimensionLabel { GridRow { meta("Dimensions", d) } }

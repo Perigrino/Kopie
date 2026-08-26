@@ -3,15 +3,48 @@ import KopieCore
 
 struct OnboardingView: View {
     @EnvironmentObject var state: AppState
+    private let settings = SettingsStore.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var step = 0
     @State private var retention = RetentionPeriod.daySeven
+    @State private var splashTask: Task<Void, Never>?
 
     var body: some View {
+        Group {
+            if state.isReturnLaunch {
+                splashView
+            } else {
+                fullOnboardingView
+            }
+        }
+        .frame(width: 520, height: 420)
+        .background(BreathingBackground(reduceMotion: reduceMotion, cycle: state.ambientSpeed.cycle))
+    }
+
+    // MARK: - Splash mode (return visits)
+
+    /// Shows just the LandingView for ~3 seconds, then auto-dismisses.
+    private var splashView: some View {
+        LandingView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                splashTask = Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    guard !Task.isCancelled else { return }
+                    withAnimation {
+                        state.finishOnboarding(retention: settings.retentionPeriod)
+                        dismiss()
+                    }
+                }
+            }
+            .onDisappear { splashTask?.cancel() }
+    }
+
+    // MARK: - Full onboarding (first launch)
+
+    private var fullOnboardingView: some View {
         VStack(spacing: 0) {
-            // Plain pager (no TabView — macOS would render a top tab picker,
-            // duplicating the bottom Back/dots/Continue progress indicator).
             Group {
                 switch step {
                 case 0: LandingView()
@@ -52,11 +85,6 @@ struct OnboardingView: View {
             }
             .padding(16)
         }
-        .frame(width: 520, height: 420)
-        // Same breathing pastel base as LandingView, so the background effect
-        // covers the whole window — including the bottom Back/dots/Continue
-        // strip — instead of leaving white gaps around the landing.
-        .background(BreathingBackground(reduceMotion: reduceMotion, cycle: state.ambientSpeed.cycle))
     }
 
     private func stepView(_ tag: Int, symbol: String, title: String, message: String) -> some View {

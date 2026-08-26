@@ -29,17 +29,7 @@ struct HistoryRow: View {
             icon
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.preview).lineLimit(1).font(.body)
-                HStack(spacing: 6) {
-                    Text(item.typeLabel).font(.caption).foregroundStyle(.secondary)
-                    Text("·").foregroundStyle(.secondary)
-                    Text(time(item.createdAt)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                    if item.kind == .image, item.width != nil {
-                        Text("·").foregroundStyle(.secondary)
-                        Text("\((item.width ?? 0)) × \((item.height ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    if item.kind == .text, let c = item.charCount { Text("·").foregroundStyle(.secondary); Text("\(c) chars").font(.caption).foregroundStyle(.tertiary) }
-                    if item.kind == .file, let n = item.filePaths?.count { Text("·").foregroundStyle(.secondary); Text("\(n) file\(n == 1 ? "" : "s")").font(.caption).foregroundStyle(.tertiary) }
-                }
+                metadataLine
             }
             Spacer()
             if !selectionMode && hovering {
@@ -63,6 +53,77 @@ struct HistoryRow: View {
         })
     }
 
+    @ViewBuilder private var metadataLine: some View {
+        HStack(spacing: 4) {
+            // Source app icon and name (compact)
+            if let sourceApp = item.sourceApp {
+                Image(nsImage: AppIconResolver.icon(for: sourceApp, size: NSSize(width: 10, height: 10)))
+                    .frame(width: 10, height: 10)
+                    .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                Text(item.sourceAppName)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            
+            // Type label
+            if item.sourceApp != nil {
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Text(item.typeLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            
+            // Time
+            Text("·")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(time(item.createdAt))
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            
+            // Content-specific details
+            if item.kind == .image, let d = item.dimensionLabel {
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(d)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            } else if item.kind == .text, let c = item.charCount {
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("\(c) chars")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if item.kind == .file, let n = item.filePaths?.count {
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("\(n) file\(n == 1 ? "" : "s")")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            
+            // Copy count (only if > 1)
+            if item.copyCount > 1 {
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("\(item.copyCount)×")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .lineLimit(1)
+    }
+
     /// Applies onTapGesture only when enabled, so a plain row can participate
     /// in List selection instead of swallowing the click.
     private struct TapAction: ViewModifier {
@@ -78,24 +139,28 @@ struct HistoryRow: View {
     }
 
     @ViewBuilder private var icon: some View {
-        if let thumb = thumbnail {
-            Image(nsImage: thumb)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        } else if item.kind == .image {
-            Image(systemName: "photo")
-                .frame(width: 40, height: 40)
-                .foregroundStyle(.secondary)
-        } else if item.kind == .file {
-            Image(systemName: "folder")
-                .frame(width: 40, height: 40)
-                .foregroundStyle(.secondary)
-        } else {
-            Image(systemName: "doc.text")
-                .frame(width: 40, height: 40)
-                .foregroundStyle(.secondary)
+        ZStack(alignment: .bottomTrailing) {
+            if let thumb = thumbnail {
+                Image(nsImage: thumb)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else if item.kind == .image {
+                Image(systemName: "photo")
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(.secondary)
+            } else if item.kind == .file {
+                Image(systemName: "folder")
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "doc.text")
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(.secondary)
+            }
+            
+
         }
     }
 

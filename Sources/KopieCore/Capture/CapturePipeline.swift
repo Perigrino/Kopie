@@ -2,6 +2,7 @@ import Foundation
 
 public enum CaptureResult: Equatable {
     case captured(Int64)
+    case recopied(Int64)
     case paused
     case disabledKind
     case excludedApp
@@ -33,13 +34,21 @@ public final class CapturePipeline {
         if content.imageData == nil && content.text == nil && content.filePaths == nil { return .empty }
 
         let hash = Hashing.sha256(content.canonicalData)
-        if config.ignoreDuplicates, let latest = store.latestHash(), latest == hash { return .duplicate }
+        
+        // Check for re-copy of existing content
+        if config.ignoreDuplicates, let existing = store.getByHash(hash) {
+            let sourceApp = config.trackSourceApp ? content.sourceAppID : nil
+            store.updateRecopy(existing.id, sourceApp: sourceApp, now: now)
+            return .recopied(existing.id)
+        }
 
+        let sourceApp = config.trackSourceApp ? content.sourceAppID : nil
         var item = ClipboardItem(id: 0, kind: content.clipKind, createdAt: now, lastAccessedAt: now,
                                  isFavorite: false, contentHash: hash,
                                  text: content.text ?? content.filePaths?.joined(separator: "\n"),
                                  imageRelPath: nil, thumbRelPath: nil, fileSize: 0,
-                                 width: nil, height: nil)
+                                 width: nil, height: nil,
+                                 sourceApp: sourceApp, copyCount: 1, lastCopiedAt: nil)
         if let data = content.imageData {
             do {
                 let info = try writer.writeImage(data, hashHex: hash)

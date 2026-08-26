@@ -51,10 +51,14 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     public var fileSize: Int
     public var width: Int?
     public var height: Int?
+    public var sourceApp: String?
+    public var copyCount: Int
+    public var lastCopiedAt: Date?
 
     public init(id: Int64, kind: ClipKind, createdAt: Date, lastAccessedAt: Date, isFavorite: Bool,
                 contentHash: String, text: String?, imageRelPath: String?, thumbRelPath: String?,
-                fileSize: Int, width: Int?, height: Int?) {
+                fileSize: Int, width: Int?, height: Int?, sourceApp: String? = nil,
+                copyCount: Int = 1, lastCopiedAt: Date? = nil) {
         self.id = id
         self.kind = kind
         self.createdAt = createdAt
@@ -67,6 +71,9 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         self.fileSize = fileSize
         self.width = width
         self.height = height
+        self.sourceApp = sourceApp
+        self.copyCount = copyCount
+        self.lastCopiedAt = lastCopiedAt
     }
 
     public var charCount: Int? { text?.count }
@@ -80,6 +87,12 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     public var dimensionLabel: String? {
         guard let w = width, let h = height else { return nil }
         return "\(w) × \(h)"
+    }
+    public var sourceAppName: String {
+        sourceApp.map { AppNameResolver.name(for: $0) } ?? "Unknown"
+    }
+    public var copyCountLabel: String {
+        copyCount == 1 ? "1 copy" : "\(copyCount) copies"
     }
     public var preview: String {
         if kind == .file {

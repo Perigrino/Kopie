@@ -32,6 +32,8 @@ public final class SettingsStore: @unchecked Sendable {
         public static let hasSeenOnboarding = "hasSeenOnboarding"
         public static let hotkey = "hotkey"
         public static let ambientSpeed = "ambientSpeed"
+        public static let trackSourceApp = "trackSourceApp"
+        public static let splitPosition = "splitPosition"
     }
 
     /// Bump when adding a new migration step.
@@ -106,7 +108,8 @@ public final class SettingsStore: @unchecked Sendable {
     private func healInvalidTypes() {
         let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.saveFiles,
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
-                        Keys.showMenuBarIcon, Keys.startMonitoring, Keys.hasSeenOnboarding]
+                        Keys.showMenuBarIcon, Keys.startMonitoring, Keys.hasSeenOnboarding,
+                        Keys.trackSourceApp]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -250,6 +253,17 @@ public final class SettingsStore: @unchecked Sendable {
         }
     }
 
+    public var trackSourceApp: Bool {
+        get { defaults.object(forKey: Keys.trackSourceApp) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.trackSourceApp) }
+    }
+
+    /// Stores the horizontal split position (0…1) of the main view's list/detail divider.
+    public var splitPosition: Double {
+        get { let v = defaults.double(forKey: Keys.splitPosition); return v > 0 ? v : 0.4 }
+        set { defaults.set(newValue, forKey: Keys.splitPosition) }
+    }
+
     /// The capture configuration derived from the current settings.
     public var captureConfig: CaptureConfig {
         CaptureConfig(
@@ -259,6 +273,7 @@ public final class SettingsStore: @unchecked Sendable {
             saveFiles: saveFiles,
             ignoreDuplicates: ignoreDuplicates,
             maxItems: maxItems,
-            excludedAppIDs: excludedAppIDs)
+            excludedAppIDs: excludedAppIDs,
+            trackSourceApp: trackSourceApp)
     }
 }

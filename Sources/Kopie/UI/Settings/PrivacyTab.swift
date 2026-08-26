@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import KopieCore
 
 struct SettingsPrivacyTab: View {
     @EnvironmentObject var state: AppState
@@ -37,6 +38,10 @@ struct SettingsPrivacyTab: View {
                 Toggle("Pause monitoring", isOn: Binding(
                     get: { state.isPaused },
                     set: { on in on ? state.pauseMonitoring() : state.startMonitoring() }))
+                Toggle("Track source application", isOn: Binding(
+                    get: { SettingsStore.shared.trackSourceApp },
+                    set: { SettingsStore.shared.trackSourceApp = $0 }))
+                    .help("Record which app copied each item")
                 Button("Clear All Data…", role: .destructive) { showClearAllConfirm = true }
                 Divider()
                 Text("Your clipboard stays on your Mac. Kopie does not upload or share your clipboard history.")

@@ -23,7 +23,10 @@ public final class ClipStore {
       thumb_rel_path TEXT,
       file_size INTEGER NOT NULL DEFAULT 0,
       width INTEGER,
-      height INTEGER);
+      height INTEGER,
+      source_app TEXT,
+      copy_count INTEGER NOT NULL DEFAULT 1,
+      last_copied_at INTEGER);
     CREATE INDEX IF NOT EXISTS idx_ci_created ON clipboard_items(created_at);
     CREATE INDEX IF NOT EXISTS idx_ci_kind ON clipboard_items(kind);
     CREATE INDEX IF NOT EXISTS idx_ci_hash ON clipboard_items(content_hash);
@@ -60,6 +63,7 @@ public final class ClipStore {
         self.bootstrapError = err
         self.crypto = crypto ?? (try? KeychainHistoryCrypto())
         self.encryptionAvailable = self.crypto != nil
+        migrateSchema()
         migrateLegacyPlaintext()
         backfillSearchIndex()
     }
@@ -69,8 +73,29 @@ public final class ClipStore {
         self.baseDir = baseDir
         self.crypto = crypto ?? (try? KeychainHistoryCrypto())
         self.encryptionAvailable = self.crypto != nil
+        migrateSchema()
         migrateLegacyPlaintext()
         backfillSearchIndex()
+    }
+
+    /// Adds new columns to existing databases that were created before the
+    /// metadata feature was added. Uses PRAGMA table_info to detect which
+    /// columns already exist.
+    private func migrateSchema() {
+        let existingColumns: Set<String> = {
+            let rows = (try? db.rows("PRAGMA table_info(clipboard_items)", [])) ?? []
+            return Set(rows.compactMap { $0[1] as? String })
+        }()
+        
+        if !existingColumns.contains("source_app") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN source_app TEXT", [])
+        }
+        if !existingColumns.contains("copy_count") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN copy_count INTEGER NOT NULL DEFAULT 1", [])
+        }
+        if !existingColumns.contains("last_copied_at") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN last_copied_at INTEGER", [])
+        }
     }
 
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
@@ -137,10 +162,11 @@ public final class ClipStore {
     public func insert(_ item: ClipboardItem) -> Int64 {
         do {
             _ = try db.run(
-        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
          item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
-         item.width.flatMap(Int64.init), item.height.flatMap(Int64.init)])
+         item.width.flatMap(Int64.init), item.height.flatMap(Int64.init),
+         item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms)])
             let id = db.scalarInt64("SELECT last_insert_rowid()")
             if let text = item.text, let tokens = crypto?.searchTokens(for: text), !tokens.isEmpty {
                 indexTokens(tokens, for: id)
@@ -153,7 +179,7 @@ public final class ClipStore {
     }
 
     private static let cols =
-        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height"
+        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at"
 
     private func map(_ r: [Any?]) -> ClipboardItem {
         ClipboardItem(
@@ -168,7 +194,10 @@ public final class ClipStore {
             thumbRelPath: r[8] as? String,
             fileSize: Int(r[9] as? Int64 ?? 0),
             width: r[10].flatMap { Int($0 as? Int64 ?? 0) },
-            height: r[11].flatMap { Int($0 as? Int64 ?? 0) })
+            height: r[11].flatMap { Int($0 as? Int64 ?? 0) },
+            sourceApp: r[12] as? String,
+            copyCount: Int(r[13] as? Int64 ?? 1),
+            lastCopiedAt: (r[14] as? Int64).map(date))
     }
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
@@ -251,6 +280,26 @@ public final class ClipStore {
         let rows = (try? db.rows("SELECT \(Self.cols) FROM clipboard_items WHERE id = ?", [id])) ?? []
         return rows.first.map { map($0) }
     }
+    
+    /// Returns existing item with matching content hash, if any.
+    public func getByHash(_ hash: String) -> ClipboardItem? {
+        let rows = (try? db.rows("SELECT \(Self.cols) FROM clipboard_items WHERE content_hash = ? LIMIT 1", [hash])) ?? []
+        return rows.first.map { map($0) }
+    }
+    
+    /// Updates an existing item when the same content is re-copied.
+    /// Increments copy count, updates timestamps, and updates source app.
+    public func updateRecopy(_ id: Int64, sourceApp: String?, now: Date) {
+        _ = try? db.run("""
+            UPDATE clipboard_items 
+            SET copy_count = copy_count + 1,
+                last_copied_at = ?,
+                last_accessed_at = ?,
+                source_app = ?
+            WHERE id = ?
+        """, [ms(now), ms(now), sourceApp, id])
+    }
+    
     public func latestHash() -> String? {
         (try? db.rows("SELECT content_hash FROM clipboard_items ORDER BY id DESC LIMIT 1", []))?.first?.first as? String
     }

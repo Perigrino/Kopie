@@ -24,7 +24,7 @@ struct PopoverView: View {
             Divider()
             bottomBar
         }
-        .frame(width: 340)
+        .frame(width: 440)
         .onAppear {
             state.refresh()
             DispatchQueue.main.async { searchFocused = true }
@@ -145,7 +145,7 @@ struct PopoverView: View {
                 Image(nsImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 304, maxHeight: 170)
+                    .frame(maxWidth: 408, maxHeight: 170)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Text("\(item.width ?? 0) × \(item.height ?? 0)")
                     .font(.caption2).foregroundStyle(.secondary)
