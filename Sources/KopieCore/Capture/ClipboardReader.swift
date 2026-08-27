@@ -37,11 +37,6 @@ public enum ClipboardReader {
             else if let data = board.data(forType: NSPasteboard.PasteboardType("public.rtf")), !data.isEmpty {
                 rtfData = data
             }
-            // Try attributed string as another source of rich text
-            else if let data = board.data(forType: .string), !data.isEmpty {
-                // Some apps store attributed string data in the string type
-                // We'll skip this for now and just use plain text
-            }
             
             if let rtf = rtfData {
                 return CapturedContent(kind: .textWithRichText(s, rtf), sourceAppID: app)

@@ -247,22 +247,7 @@ public final class ClipStore {
         let rows = (try? db.rows(sql, params)) ?? []
         var items = rows.map { map($0) }
         if !f.textQuery.isEmpty {
-            let q = f.textQuery
-            if f.useRegex {
-                // Regex mode: try to compile the pattern and filter
-                if let regex = try? NSRegularExpression(pattern: q, options: []) {
-                    items = items.filter { item in
-                        guard let text = item.text else { return false }
-                        let range = NSRange(text.startIndex..., in: text)
-                        return regex.firstMatch(in: text, options: [], range: range) != nil
-                    }
-                } else {
-                    // Invalid regex: return empty results
-                    items = []
-                }
-            } else {
-                items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(q) }
-            }
+            items = match(items, query: f.textQuery, isRegex: f.useRegex)
         }
         return items
     }
@@ -305,20 +290,23 @@ public final class ClipStore {
         params.append(max(f.limit, 1000))
         let rows = (try? db.rows(sql, params)) ?? []
         var items = rows.map { map($0) }
-        if f.useRegex {
-            if let regex = try? NSRegularExpression(pattern: f.textQuery, options: []) {
-                items = items.filter { item in
-                    guard let text = item.text else { return false }
-                    let range = NSRange(text.startIndex..., in: text)
-                    return regex.firstMatch(in: text, options: [], range: range) != nil
-                }
-            } else {
-                items = []
-            }
-        } else {
-            items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(f.textQuery) }
-        }
+        items = match(items, query: f.textQuery, isRegex: f.useRegex)
         return items
+    }
+
+    /// Applies the search filter in memory. In regex mode an invalid pattern is
+    /// treated as a failure and we fall back to a literal substring match rather
+    /// than silently returning nothing.
+    private func match(_ items: [ClipboardItem], query: String, isRegex: Bool) -> [ClipboardItem] {
+        guard !query.isEmpty else { return items }
+        if isRegex, let regex = try? NSRegularExpression(pattern: query, options: []) {
+            return items.filter { item in
+                guard let text = item.text else { return false }
+                let range = NSRange(text.startIndex..., in: text)
+                return regex.firstMatch(in: text, options: [], range: range) != nil
+            }
+        }
+        return items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(query) }
     }
 
     public func get(_ id: Int64) -> ClipboardItem? {

@@ -63,6 +63,38 @@ final class CodeLanguageDetectorTests: XCTestCase {
         XCTAssertEqual(CodeLanguageDetector.detect(content: s), .csharp)
     }
 
+    func testRuby() {
+        let s = """
+        def hello(name)
+          puts "Hello #{name}"
+        end
+        """
+        XCTAssertEqual(CodeLanguageDetector.detect(content: s), .ruby)
+    }
+
+    func testC() {
+        let s = """
+        #include <stdio.h>
+        int main(void) {
+            printf("Hello\\n");
+            return 0;
+        }
+        """
+        XCTAssertEqual(CodeLanguageDetector.detect(content: s), .c)
+    }
+
+    func testCpp() {
+        let s = """
+        #include <iostream>
+        using namespace std;
+        int main() {
+            cout << "Hello" << endl;
+            return 0;
+        }
+        """
+        XCTAssertEqual(CodeLanguageDetector.detect(content: s), .cpp)
+    }
+
     func testPlainProseFallback() {
         let s = """
         The little fox ran across the stream.

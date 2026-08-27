@@ -118,10 +118,11 @@ public enum CodeLanguageDetector {
     private static func keywordLanguage(_ text: String) -> CodeLanguage? {
         let lower = text.lowercased()
 
-        // Most distinctive first.
-        if lower.contains("using system") || lower.contains("namespace ")
-            || lower.contains("[apicontroller") || lower.contains("[apicontrollertemplate") { return .csharp }
-        if lower.contains("public class ") && text.contains(":") && text.contains("{") { return .csharp }
+        // Most distinctive first. C# signals only — C++ shares `namespace` and
+        // `class X : Y`, so those alone must not be claimed as C#.
+        if lower.contains("using system") || lower.contains("console.writeline")
+            || lower.contains("[apicontroller") || lower.contains("[apicontrollertemplate")
+            || (lower.contains("get; set;") && lower.contains("public ")) { return .csharp }
 
         if lower.contains("import swiftui") || lower.contains("struct ") && text.contains("let ") && text.contains("{")
             || lower.contains("import foundation") { return .swift }
@@ -130,11 +131,27 @@ public enum CodeLanguageDetector {
 
         if lower.contains("package ") && lower.contains("func ") { return .go }
 
+        // Ruby before Python: both use `def`, but Ruby bodies end in `end`.
+        if (lower.contains("def ") && (lower.contains("\nend") || lower.contains(" end")))
+            || lower.contains("require '") || lower.contains("require \"")
+            || lower.contains("class ") && lower.contains(" < ") && text.contains("end")
+            || lower.contains("puts ") && text.contains("end") { return .ruby }
+
         if lower.contains("def ") || lower.contains("__init__") { return .python }
 
         if lower.contains("fn ") && lower.contains("let mut") || lower.contains("impl ") { return .rust }
 
-        if lower.contains("#include") || lower.contains("std::") || lower.contains("namespace std") { return .cpp }
+        // C vs C++: `std::`, `namespace`, `class`, `template`, `using namespace`
+        // are C++-only. Bare `#include` with C primitives (`printf`, `malloc`,
+        // `int main`, `typedef struct`) and no `::` is C.
+        let isCPP = lower.contains("std::") || lower.contains("namespace") || lower.contains("template <")
+            || lower.contains("using namespace") || lower.contains("::")
+        if isCPP { return .cpp }
+        if lower.contains("#include") {
+            if lower.contains("cout") || lower.contains("cin") || lower.contains("string ")
+                || lower.contains("vector") || lower.contains("iostream") { return .cpp }
+            return .c
+        }
 
         if lower.contains("public class ") || lower.contains("public static void main")
             || lower.contains("import java.") || lower.contains("system.out.println") { return .java }

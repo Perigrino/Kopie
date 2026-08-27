@@ -3,33 +3,8 @@ import KopieCore
 
 final class ContentDetectorTests: XCTestCase {
 
-    func test_typescriptSnippetDetectedAsCode() {
-        // A JS/TS snippet like the reference code card must route to .code.
-        let snippet = """
-        const post = await getPost(postId)
-
-        if (post.deleted) return
-
-        post.content = cleanContent(content)
-        """
-        guard case .code(let language) = ContentDetector.detectContentType(snippet) else {
-            return XCTFail("expected .code, got \(ContentDetector.detectContentType(snippet))")
-        }
-        XCTAssertEqual(language, "typescript")
-    }
-
-    func test_arrowFunctionDetectedAsCode() {
-        let snippet = """
-        const sum = (a, b) => a + b
-        const double = (n) => n * 2
-        """
-        guard case .code = ContentDetector.detectContentType(snippet) else {
-            return XCTFail("expected .code for arrow functions")
-        }
-    }
-
     func test_plainProseIsNotCode() {
-        // Normal multi-line prose (no code signatures) must stay plain text.
+        // Normal multi-line prose must stay plain text.
         let prose = """
         The little fox ran across the stream.
         It was a bright and sunny afternoon.
@@ -50,14 +25,27 @@ final class ContentDetectorTests: XCTestCase {
         }
     }
 
-    func test_singleLineIfNotEnoughForCodeByItself() {
-        // A single "if a sentence reads like..." line should not be code unless
-        // additional code signals are present. One unflagged line is plain text.
-        let sentence = "if you think about it the answer is simple"
-        if case .plainText = ContentDetector.detectContentType(sentence) {
+    func test_emailDetected() {
+        if case .email = ContentDetector.detectContentType("hello@example.com") {
             // ok
         } else {
-            XCTFail("expected plainText, got \(ContentDetector.detectContentType(sentence))")
+            XCTFail("expected .email")
+        }
+    }
+
+    func test_phoneNumberDetected() {
+        if case .phoneNumber = ContentDetector.detectContentType("(555) 123-4567") {
+            // ok
+        } else {
+            XCTFail("expected .phoneNumber")
+        }
+    }
+
+    func test_plainTextFallback() {
+        if case .plainText = ContentDetector.detectContentType("just some ordinary prose here") {
+            // ok
+        } else {
+            XCTFail("expected plainText")
         }
     }
 }

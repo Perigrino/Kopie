@@ -68,13 +68,11 @@ struct PopoverView: View {
 
     private var searchBar: some View {
         HStack(spacing: 0) {
-            // Search icon
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 10)
             
-            // Search field - auto-detects regex vs plain text
             TextField("Search clipboard…", text: $state.searchText)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
@@ -82,7 +80,6 @@ struct PopoverView: View {
                 .padding(.horizontal, 8)
                 .font(.system(size: 13))
             
-            // Clear button (when text exists)
             if !state.searchText.isEmpty {
                 Button { 
                     withAnimation(.easeInOut(duration: 0.15)) {

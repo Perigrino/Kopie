@@ -14,9 +14,19 @@ struct FormattedCodeView: View {
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
 
+    // Cache highlighted lines so large content isn't re-tokenized on every body
+    // pass (hover, layout, the copy animation). Keyed by content + language + mode.
+    private static let highlightCache = NSCache<NSString, NSArray>()
+
     private var formatted: String { CodeFormatter.format(content, language: language) }
     private var theme: SyntaxHighlighter.Theme { colorScheme == .dark ? SyntaxHighlighter.dark : SyntaxHighlighter.light }
-    private var lines: [NSAttributedString] { SyntaxHighlighter.highlightedLines(formatted, language: language, theme: theme) }
+    private var lines: [NSAttributedString] {
+        let key = "\(formatted)\u{1}\(language.rawValue)\u{1}\(colorScheme == .dark ? 1 : 0)" as NSString
+        if let cached = Self.highlightCache.object(forKey: key) as? [NSAttributedString] { return cached }
+        let computed = SyntaxHighlighter.highlightedLines(formatted, language: language, theme: theme)
+        Self.highlightCache.setObject(computed as NSArray, forKey: key)
+        return computed
+    }
     private var lineCount: Int { max(formatted.split(separator: "\n", omittingEmptySubsequences: false).count, 1) }
 
     /// Adaptive card surface that reads well in both light and dark mode.
@@ -65,10 +75,10 @@ struct FormattedCodeView: View {
                     Text(copied ? "Copied" : "Copy")
                 }
                 .font(.system(size: 11))
-                .foregroundStyle(Color(nsColor: .labelColor))
+                .foregroundStyle(Color.accentColor)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(fg.opacity(0.3), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor.opacity(0.4), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .help("Copy content")

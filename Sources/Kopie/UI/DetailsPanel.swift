@@ -22,11 +22,6 @@ struct DetailsPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var contentType: ContentType {
-        guard let text = item.text else { return .plainText }
-        return ContentDetector.detectContentType(text)
-    }
-
     /// Detected language/format for the Formatted tab, based on the item text.
     private var codeLanguage: CodeLanguage {
         guard let text = item.text else { return .plainText }
@@ -133,8 +128,8 @@ struct DetailsPanel: View {
             if item.kind == .file, let n = item.filePaths?.count { GridRow { meta("Files", "\(n)") } }
             if item.kind == .image, let d = item.dimensionLabel { GridRow { meta("Dimensions", d) } }
             GridRow { meta("Size", ByteCountFormatter.string(fromByteCount: Int64(item.fileSize), countStyle: .file)) }
-            if item.kind == .text, case .code(let lang) = contentType, let language = lang {
-                GridRow { meta("Language", language.uppercased()) }
+            if item.kind == .text, codeLanguage != .plainText {
+                GridRow { meta("Language", codeLanguage.displayName) }
             }
             if item.isFavorite { GridRow { meta("Favorite", "Yes") } }
             if item.isPinned { GridRow { meta("Pinned", "Yes") } }
@@ -155,7 +150,6 @@ struct DetailsPanel: View {
 
     private var actions: some View {
         HStack(spacing: 12) {
-            // Primary action: Copy
             Button {
                 state.copyBack(item)
             } label: {
@@ -167,7 +161,6 @@ struct DetailsPanel: View {
             
             Divider().frame(height: 20)
             
-            // Toggle actions
             Button {
                 state.toggleFavorite(item)
             } label: {
@@ -188,7 +181,6 @@ struct DetailsPanel: View {
             
             Spacer()
             
-            // Destructive action: Delete
             Button(role: .destructive) {
                 state.remove(item)
             } label: {

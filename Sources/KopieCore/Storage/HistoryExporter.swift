@@ -54,9 +54,11 @@ public final class HistoryExporter {
                 dict["height"] = item.height
             }
             
-            // Export rich text as base64
+            // Export rich text as base64, recording the original format so the
+            // import can restore it as the same kind (RTF vs HTML) it was captured as.
             if let rtfRel = item.richTextRelPath, let rtfData = writer.loadRichText(relPath: rtfRel) {
                 dict["richTextData"] = rtfData.base64EncodedString()
+                dict["richTextFormat"] = rtfRel.hasSuffix(".html") ? "html" : "rtf"
             }
             
             exportItems.append(dict)
@@ -76,7 +78,7 @@ public final class HistoryExporter {
     /// Returns the number of items imported (skips duplicates by content hash).
     public func `import`(from url: URL) throws -> Int {
         let data = try Data(contentsOf: url)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             throw ImportError.invalidFormat
         }
         
@@ -130,11 +132,15 @@ public final class HistoryExporter {
                 }
             }
             
-            // Import rich text if present
+            // Import rich text if present. Honor the exported format so HTML rich
+            // text isn't silently re-stored as RTF (which would mis-render).
             var richTextRelPath: String? = nil
             if let rtfBase64 = dict["richTextData"] as? String,
                let rtfData = Data(base64Encoded: rtfBase64) {
-                richTextRelPath = try? writer.writeRichText(rtfData, hashHex: contentHash)
+                let isHTML = (dict["richTextFormat"] as? String)?.lowercased() == "html"
+                let rel = isHTML ? try? writer.writeHTML(rtfData, hashHex: contentHash)
+                                 : try? writer.writeRichText(rtfData, hashHex: contentHash)
+                richTextRelPath = rel
             }
             
             let item = ClipboardItem(
@@ -167,7 +173,7 @@ public final class HistoryExporter {
         return importedCount
     }
     
-    public enum ImportError: Error, LocalizedError {
+    public enum ImportError: Error, LocalizedError, Equatable {
         case invalidFormat
         case unsupportedVersion
         

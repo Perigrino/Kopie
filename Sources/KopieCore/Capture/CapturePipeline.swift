@@ -39,7 +39,6 @@ public final class CapturePipeline {
         default:
             if content.imageData == nil && content.text == nil && content.filePaths == nil { return .empty }
         }
-        if content.imageData == nil && content.text == nil && content.filePaths == nil { return .empty }
 
         let hash = Hashing.sha256(content.canonicalData)
         

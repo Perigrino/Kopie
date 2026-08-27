@@ -175,11 +175,16 @@ final class AppState: ObservableObject {
     func refresh(filter: QueryFilter? = nil) {
         var f = QueryFilter()
         f.textQuery = searchText
-        // Auto-detect regex: try to compile as regex, if valid use regex search
+        // Auto-detect regex: try to compile as regex, if valid use regex search.
         if !searchText.isEmpty {
             f.useRegex = searchText.isValidRegex
         }
-        if let filter { f.kind = filter.kind; f.bucket = filter.bucket; f.favoritesOnly = filter.favoritesOnly }
+        if let filter {
+            f.kind = filter.kind
+            f.bucket = filter.bucket
+            f.favoritesOnly = filter.favoritesOnly
+            f.pinnedOnly = filter.pinnedOnly
+        }
         items = store.query(f)
     }
 
