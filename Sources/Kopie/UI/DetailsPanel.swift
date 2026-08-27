@@ -33,25 +33,6 @@ struct DetailsPanel: View {
         return CodeLanguageDetector.detect(content: text)
     }
 
-    /// The Formatted tab is a universal viewer: show the code card for any
-    /// content whose language is detected as code, otherwise render rich text
-    /// if present, otherwise plain text.
-    @ViewBuilder private func formattedBody(richData: Data?, hasRich: Bool, isHTML: Bool) -> some View {
-        if codeLanguage != .plainText {
-            FormattedCodeView(content: item.text ?? "", language: codeLanguage)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else if hasRich, let data = richData {
-            RichTextRepresentation(data: data, isHTML: isHTML)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            Text(item.text ?? "")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-    
     @ViewBuilder private var content: some View {
         if item.kind == .text {
             VStack(alignment: .leading, spacing: 8) {
@@ -60,36 +41,49 @@ struct DetailsPanel: View {
                 let hasRich = richData != nil
                 let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
                 let isCode = codeLanguage != .plainText
-                // Show the Plain/Formatted toggle whenever there is formatting to
-                // show. If a plain item is selected while still in Formatted mode,
-                // keep it visible so the user can switch back.
-                let showTabs = hasRich || isCode || showRichText
 
-                if showTabs {
-                    Picker("", selection: $showRichText) {
-                        Text("Plain Text").tag(false)
-                        Text("Formatted").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                // Always show the Plain/Formatted toggle for text items so you can
+                // switch between the two either way.
+                Picker("", selection: $showRichText) {
+                    Text("Plain Text").tag(false)
+                    Text("Formatted").tag(true)
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
 
-                // Wrap the body in a scroll view so long content scrolls instead of
-                // overflowing the panel. The tabs pin above it.
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if showRichText {
-                            formattedBody(richData: richData, hasRich: hasRich, isHTML: isHTML)
+                Group {
+                    if showRichText {
+                        if isCode {
+                            // The code card scrolls itself (both axes), so don't
+                            // wrap it in another ScrollView — that caused nested
+                            // vertical scrollbars and a collapsed one-line view.
+                            FormattedCodeView(content: item.text ?? "", language: codeLanguage)
+                        } else if hasRich, let data = richData {
+                            ScrollView {
+                                RichTextRepresentation(data: data, isHTML: isHTML)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         } else {
+                            ScrollView {
+                                Text(item.text ?? "")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    } else {
+                        // Plain Text tab
+                        ScrollView {
                             Text(item.text ?? "")
                                 .font(.body)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .id(item.id) // rebuild when a different item is selected
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .id(item.id) // rebuild when a different item is selected
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else if item.kind == .file {
             ScrollView {
