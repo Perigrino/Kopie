@@ -88,7 +88,9 @@ struct CodeBlockView: View {
     }
 
     private var codeBody: some View {
-        ScrollView([.horizontal, .vertical], showsIndicators: false) {
+        // Only horizontal scrolling here — the panel's outer ScrollView handles
+        // vertical scrolling, so the card can grow with its content.
+        ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { idx, line in
                     HStack(alignment: .top, spacing: 0) {

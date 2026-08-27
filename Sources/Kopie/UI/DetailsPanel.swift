@@ -14,9 +14,9 @@ struct DetailsPanel: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             metaGrid
             actions
-            Spacer()
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -65,14 +65,21 @@ struct DetailsPanel: View {
                     .labelsHidden()
                 }
 
-                if showRichText {
-                    formattedBody(richData: richData, hasRich: hasRich, isHTML: isHTML, isCode: isCode)
-                        .id(item.id) // rebuild when a different item is selected
-                } else {
-                    Text(item.text ?? "")
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // Wrap the body in a scroll view so long content scrolls instead of
+                // overflowing the panel. The tabs pin above it.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if showRichText {
+                            formattedBody(richData: richData, hasRich: hasRich, isHTML: isHTML, isCode: isCode)
+                        } else {
+                            Text(item.text ?? "")
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .id(item.id) // rebuild when a different item is selected
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         } else if item.kind == .file {
