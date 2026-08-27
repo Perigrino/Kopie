@@ -27,19 +27,28 @@ struct DetailsPanel: View {
         return ContentDetector.detectContentType(text)
     }
 
-    /// Renders the body of the "Formatted" tab. Code always renders as the
-    /// dark editor card; rich text renders as attributed text; anything else
-    /// gets a friendly empty state.
-    @ViewBuilder private func formattedBody(richData: Data?, hasRich: Bool, isHTML: Bool, isCode: Bool) -> some View {
-        if isCode, case .code(let language) = contentType {
-            CodeBlockView(code: item.text ?? "", language: language)
+    /// Detected language/format for the Formatted tab, based on the item text.
+    private var codeLanguage: CodeLanguage {
+        guard let text = item.text else { return .plainText }
+        return CodeLanguageDetector.detect(content: text)
+    }
+
+    /// The Formatted tab is a universal viewer: show the code card for any
+    /// content whose language is detected as code, otherwise render rich text
+    /// if present, otherwise plain text.
+    @ViewBuilder private func formattedBody(richData: Data?, hasRich: Bool, isHTML: Bool) -> some View {
+        if codeLanguage != .plainText {
+            FormattedCodeView(content: item.text ?? "", language: codeLanguage)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if hasRich, let data = richData {
             RichTextRepresentation(data: data, isHTML: isHTML)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            EmptyStateView(symbol: "textformat", title: "No rich text",
-                           message: "This copied item doesn't have any rich text formatting. Switch to the Plain Text tab to view it as plain text.")
+            Text(item.text ?? "")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     
@@ -50,7 +59,7 @@ struct DetailsPanel: View {
                 let richData = item.isRichText ? state.richText(for: item) : nil
                 let hasRich = richData != nil
                 let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
-                let isCode = { if case .code = contentType { return true } else { return false } }()
+                let isCode = codeLanguage != .plainText
                 // Show the Plain/Formatted toggle whenever there is formatting to
                 // show. If a plain item is selected while still in Formatted mode,
                 // keep it visible so the user can switch back.
@@ -70,7 +79,7 @@ struct DetailsPanel: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         if showRichText {
-                            formattedBody(richData: richData, hasRich: hasRich, isHTML: isHTML, isCode: isCode)
+                            formattedBody(richData: richData, hasRich: hasRich, isHTML: isHTML)
                         } else {
                             Text(item.text ?? "")
                                 .font(.body)
