@@ -67,28 +67,73 @@ struct PopoverView: View {
     }
 
     private var searchBar: some View {
-        HStack {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+        HStack(spacing: 0) {
+            // Search icon
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 10)
+            
+            // Search field
             TextField(state.isRegexEnabled ? "Search with regex…" : "Search clipboard…", text: $state.searchText)
-                .textFieldStyle(.plain).focused($searchFocused)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
                 .onSubmit { state.refresh() }
-            Button {
-                state.isRegexEnabled.toggle()
-                state.refresh()
+                .padding(.horizontal, 8)
+                .font(.system(size: 13))
+            
+            // Clear button (when text exists)
+            if !state.searchText.isEmpty {
+                Button { 
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        state.searchText = ""
+                        state.refresh()
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.quaternary)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+            }
+            
+            // Regex toggle (integrated into search bar)
+            Divider()
+                .frame(height: 18)
+                .padding(.horizontal, 4)
+            
+            Button { 
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    state.isRegexEnabled.toggle()
+                    state.refresh()
+                }
             } label: {
-                Image(systemName: state.isRegexEnabled ? "chevron.forward.square" : "text.magnifyingglass")
-                    .foregroundStyle(state.isRegexEnabled ? .blue : .secondary)
+                Text(".*")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(state.isRegexEnabled ? .white : .secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(state.isRegexEnabled ? Color.accentColor : Color.clear)
+                    )
             }
             .buttonStyle(.plain)
             .help(state.isRegexEnabled ? "Disable regex search" : "Enable regex search")
-            if !state.searchText.isEmpty {
-                Button { state.searchText = ""; state.refresh() } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
-                }.buttonStyle(.plain)
-            }
+            .padding(.trailing, 8)
         }
-        .padding(10).padding(.horizontal, DS.pad).padding(.bottom, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+        .padding(.vertical, 6)
+        .padding(.horizontal, DS.pad)
+        .padding(.bottom, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                )
+        )
     }
 
     @ViewBuilder private var content: some View {

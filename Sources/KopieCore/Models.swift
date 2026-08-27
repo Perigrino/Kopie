@@ -132,6 +132,7 @@ public struct CapturedContent: Sendable {
     public enum Kind: Sendable {
         case text(String)
         case textWithRichText(String, Data)  // plain text + RTF
+        case textWithHTML(String, Data)      // plain text + HTML
         case image(Data)
         case files([String])
     }
@@ -145,7 +146,7 @@ public struct CapturedContent: Sendable {
 
     public var clipKind: ClipKind {
         switch kind {
-        case .text, .textWithRichText: .text
+        case .text, .textWithRichText, .textWithHTML: .text
         case .image: .image
         case .files: .file
         }
@@ -154,19 +155,24 @@ public struct CapturedContent: Sendable {
         switch kind {
         case .text(let s): return s
         case .textWithRichText(let s, _): return s
+        case .textWithHTML(let s, _): return s
         default: return nil
         }
     }
     public var imageData: Data? { if case .image(let d) = kind { d } else { nil } }
     public var filePaths: [String]? { if case .files(let p) = kind { p } else { nil } }
     public var richText: Data? {
-        if case .textWithRichText(_, let d) = kind { return d }
-        return nil
+        switch kind {
+        case .textWithRichText(_, let d): return d
+        case .textWithHTML(_, let d): return d
+        default: return nil
+        }
     }
     public var canonicalData: Data {
         switch kind {
         case .text(let s): Data(s.utf8)
         case .textWithRichText(let s, _): Data(s.utf8)
+        case .textWithHTML(let s, _): Data(s.utf8)
         case .image(let d): d
         case .files(let p): Data(p.joined(separator: "\n").utf8)
         }

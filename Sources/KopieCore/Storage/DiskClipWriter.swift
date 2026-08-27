@@ -111,6 +111,17 @@ public final class DiskClipWriter: ClipWriter {
         return relPath
     }
     
+    /// Writes HTML data to disk, encrypted if a key is available.
+    /// Returns the relative path to the stored file.
+    public func writeHTML(_ data: Data, hashHex: String) throws -> String {
+        let relPath = "rtf/\(hashHex).html"
+        let fullPath = absPath(relPath)
+        let fm = FileManager.default
+        try fm.createDirectory(at: absPath("rtf"), withIntermediateDirectories: true)
+        try encrypted(data).write(to: fullPath, options: .atomic)
+        return relPath
+    }
+    
     /// Loads rich text (RTF) data from disk, decrypting if necessary.
     public func loadRichText(relPath: String) -> Data? {
         readDecrypted(at: absPath(relPath))

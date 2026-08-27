@@ -25,8 +25,11 @@ struct DetailsPanel: View {
     @ViewBuilder private var content: some View {
         if item.kind == .text {
             VStack(alignment: .leading, spacing: 8) {
-                // Toggle between plain text and rich text if rich text is available
-                if item.isRichText {
+                // Check if RTF data is actually available
+                let hasRTF = item.isRichText && state.richText(for: item) != nil
+                
+                // Toggle between plain text and rich text if RTF data is available
+                if hasRTF {
                     Picker("", selection: $showRichText) {
                         Text("Plain Text").tag(false)
                         Text("Rich Text").tag(true)
@@ -36,9 +39,10 @@ struct DetailsPanel: View {
                 }
                 
                 ScrollView {
-                    if showRichText, let rtfData = state.richText(for: item) {
-                        // Render RTF content
-                        RichTextRepresentation(data: rtfData)
+                    if hasRTF, showRichText, let rtfData = state.richText(for: item) {
+                        // Render rich text content (RTF or HTML)
+                        let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
+                        RichTextRepresentation(data: rtfData, isHTML: isHTML)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         Text(item.text ?? "")

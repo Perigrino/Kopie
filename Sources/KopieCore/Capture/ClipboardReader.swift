@@ -26,9 +26,35 @@ public enum ClipboardReader {
         }
         // Check for rich text (RTF) alongside plain text
         if let s = board.string(forType: .string) {
-            if let rtfData = board.data(forType: .rtf), rtfData != Data() {
-                return CapturedContent(kind: .textWithRichText(s, rtfData), sourceAppID: app)
+            // Try to get RTF data - check for both .rtf and public.rtf types
+            var rtfData: Data? = nil
+            
+            // First try the standard .rtf type
+            if let data = board.data(forType: .rtf), !data.isEmpty {
+                rtfData = data
             }
+            // Try the public.rtf type as fallback
+            else if let data = board.data(forType: NSPasteboard.PasteboardType("public.rtf")), !data.isEmpty {
+                rtfData = data
+            }
+            // Try attributed string as another source of rich text
+            else if let data = board.data(forType: .string), !data.isEmpty {
+                // Some apps store attributed string data in the string type
+                // We'll skip this for now and just use plain text
+            }
+            
+            if let rtf = rtfData {
+                return CapturedContent(kind: .textWithRichText(s, rtf), sourceAppID: app)
+            }
+            
+            // Try HTML as alternative rich text source
+            if let htmlData = board.data(forType: .html), !htmlData.isEmpty {
+                return CapturedContent(kind: .textWithHTML(s, htmlData), sourceAppID: app)
+            }
+            if let htmlData = board.data(forType: NSPasteboard.PasteboardType("public.html")), !htmlData.isEmpty {
+                return CapturedContent(kind: .textWithHTML(s, htmlData), sourceAppID: app)
+            }
+            
             return CapturedContent(kind: .text(s), sourceAppID: app)
         }
         return nil

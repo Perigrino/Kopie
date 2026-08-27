@@ -145,8 +145,15 @@ struct MainView: View {
                     state.isRegexEnabled.toggle()
                     state.refresh()
                 } label: {
-                    Image(systemName: state.isRegexEnabled ? "chevron.forward.square" : "text.magnifyingglass")
-                        .foregroundStyle(state.isRegexEnabled ? .blue : .secondary)
+                    Text(".*")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(state.isRegexEnabled ? .white : .secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(state.isRegexEnabled ? Color.accentColor : Color.clear)
+                        )
                 }
                 .buttonStyle(.plain)
                 .help(state.isRegexEnabled ? "Disable regex search" : "Enable regex search")

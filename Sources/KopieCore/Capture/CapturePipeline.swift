@@ -24,7 +24,7 @@ public final class CapturePipeline {
     public func process(_ content: CapturedContent, config: CaptureConfig, now: Date = .now) -> CaptureResult {
         if config.paused { return .paused }
         switch content.kind {
-        case .text, .textWithRichText: if !config.saveText { return .disabledKind }
+        case .text, .textWithRichText, .textWithHTML: if !config.saveText { return .disabledKind }
         case .image: if !config.saveImages { return .disabledKind }
         case .files: if !config.saveFiles { return .disabledKind }
         }
@@ -33,7 +33,8 @@ public final class CapturePipeline {
         // Check for empty content
         switch content.kind {
         case .text(let t) where t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-             .textWithRichText(let t, _) where t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+             .textWithRichText(let t, _) where t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+             .textWithHTML(let t, _) where t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
             return .empty
         default:
             if content.imageData == nil && content.text == nil && content.filePaths == nil { return .empty }
@@ -90,10 +91,19 @@ public final class CapturePipeline {
             item.fileSize = t.utf8.count
         }
         
-        // Write rich text (RTF) if available
-        if let rtfData = content.richText {
-            if let rtfRel = try? writer.writeRichText(rtfData, hashHex: hash) {
-                item.richTextRelPath = rtfRel
+        // Write rich text (RTF or HTML) if available
+        if let richData = content.richText {
+            switch content.kind {
+            case .textWithHTML:
+                // Write HTML content
+                if let htmlRel = try? writer.writeHTML(richData, hashHex: hash) {
+                    item.richTextRelPath = htmlRel
+                }
+            default:
+                // Write RTF content
+                if let rtfRel = try? writer.writeRichText(richData, hashHex: hash) {
+                    item.richTextRelPath = rtfRel
+                }
             }
         }
 
