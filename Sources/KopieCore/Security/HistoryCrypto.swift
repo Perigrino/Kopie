@@ -22,6 +22,20 @@ public protocol HistoryCrypto {
     func searchTokens(for text: String) -> [Data]
 }
 
+/// Selects the crypto used by default for at-rest storage. A caller may pass an
+/// explicit `HistoryCrypto`; when none is passed, this picks the Keychain-backed
+/// implementation — unless `KOPIE_DISABLE_ENCRYPTION=1`, which forces plaintext
+/// mode. The headless smoke / acceptance harness sets that so it never blocks on
+/// Keychain access (running a signed binary from a terminal can wait on a keychain
+/// authorization dialog that never resolves).
+public enum CryptoSelection {
+    public static func resolve(_ explicit: HistoryCrypto?) -> HistoryCrypto? {
+        if let explicit { return explicit }
+        if ProcessInfo.processInfo.environment["KOPIE_DISABLE_ENCRYPTION"] == "1" { return nil }
+        return try? KeychainHistoryCrypto()
+    }
+}
+
 /// AES-256-GCM with a random 256-bit key stored in the Keychain.
 ///
 /// Output layout: 12-byte nonce || ciphertext || 16-byte tag. GCM provides

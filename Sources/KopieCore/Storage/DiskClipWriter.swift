@@ -16,7 +16,7 @@ public final class DiskClipWriter: ClipWriter {
     ///   the Keychain-backed key and degrades to plaintext if unavailable.
     public init(baseDir: URL? = nil, crypto: HistoryCrypto? = nil) {
         self.base = baseDir ?? StoragePaths.baseDir()
-        self.crypto = crypto ?? (try? KeychainHistoryCrypto())
+        self.crypto = CryptoSelection.resolve(crypto)
         let fm = FileManager.default
         try? fm.createDirectory(at: base.appendingPathComponent("images"), withIntermediateDirectories: true)
         try? fm.createDirectory(at: base.appendingPathComponent("thumbs"), withIntermediateDirectories: true)

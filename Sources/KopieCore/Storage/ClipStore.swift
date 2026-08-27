@@ -64,7 +64,7 @@ public final class ClipStore {
         }
         self.db = handle
         self.bootstrapError = err
-        self.crypto = crypto ?? (try? KeychainHistoryCrypto())
+        self.crypto = CryptoSelection.resolve(crypto)
         self.encryptionAvailable = self.crypto != nil
         migrateSchema()
         migrateLegacyPlaintext()
@@ -74,7 +74,7 @@ public final class ClipStore {
     public init(database: Database, baseDir: URL, crypto: HistoryCrypto? = nil) {
         self.db = database
         self.baseDir = baseDir
-        self.crypto = crypto ?? (try? KeychainHistoryCrypto())
+        self.crypto = CryptoSelection.resolve(crypto)
         self.encryptionAvailable = self.crypto != nil
         migrateSchema()
         migrateLegacyPlaintext()
@@ -333,9 +333,6 @@ public final class ClipStore {
         """, [ms(now), ms(now), sourceApp, id])
     }
     
-    public func latestHash() -> String? {
-        (try? db.rows("SELECT content_hash FROM clipboard_items ORDER BY id DESC LIMIT 1", []))?.first?.first as? String
-    }
     public func setFavorite(_ id: Int64, _ flag: Bool) {
         _ = try? db.run("UPDATE clipboard_items SET is_favorite = ? WHERE id = ?", [flag ? 1 : 0, id])
     }

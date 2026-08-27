@@ -37,11 +37,6 @@ final class ClipStoreTests: XCTestCase {
         _ = store.insert(item(.text, "notfav"))
         XCTAssertEqual(store.query(.init(favoritesOnly: true)).count, 1)
     }
-    func test_latestHash() throws {
-        XCTAssertNil(store.latestHash())
-        _ = store.insert(item(.text, "first"))
-        XCTAssertEqual(store.latestHash(), "hfirst0")
-    }
     func test_favoriteAndDeleteAndClear() throws {
         let a = store.insert(item(.text, "a"))
         let b = store.insert(item(.text, "b"))

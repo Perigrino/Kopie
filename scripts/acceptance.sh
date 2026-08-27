@@ -7,6 +7,9 @@ if [ ! -f "dist/Kopie.app/Contents/MacOS/Kopie" ]; then
   bash scripts/build.sh debug >/dev/null 2>&1
 fi
 export KOPIE_STORAGE_DIR="$(mktemp -d)"
+# Headless harness must not block on Keychain access (a terminal-invoked signed
+# binary can wait forever on an authorization prompt) — run in plaintext mode.
+export KOPIE_DISABLE_ENCRYPTION=1
 K="./dist/Kopie.app/Contents/MacOS/Kopie"
 trap 'rm -rf "$KOPIE_STORAGE_DIR"' EXIT
 
@@ -23,8 +26,8 @@ with_timeout() {
 with_timeout 30 $K --smoke-capture "acceptance-text-123" >/dev/null
 with_timeout 30 $K --smoke-list | grep -q "acceptance-text-123" && pass "text saved" || fail "text saved"
 
-# 2. dedup
-with_timeout 30 $K --smoke-capture "acceptance-text-123" | grep -q "duplicate" && pass "dedup works" || fail "dedup works"
+# 2. re-copy detection: same content increments copy count (no duplicate row)
+with_timeout 30 $K --smoke-capture "acceptance-text-123" | grep -q "recopied(" && pass "dedup works" || fail "dedup works"
 
 # 3. text restore -> pasteboard
 id=$(with_timeout 30 $K --smoke-list | head -n1 | awk '{print $1}')

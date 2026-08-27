@@ -10,7 +10,7 @@ public final class ThumbnailGenerator {
     
     public init(baseDir: URL? = nil, crypto: HistoryCrypto? = nil) {
         self.baseDir = baseDir ?? StoragePaths.baseDir()
-        self.crypto = crypto ?? (try? KeychainHistoryCrypto())
+        self.crypto = CryptoSelection.resolve(crypto)
         let fm = FileManager.default
         try? fm.createDirectory(at: self.baseDir.appendingPathComponent("thumbs"), withIntermediateDirectories: true)
     }
