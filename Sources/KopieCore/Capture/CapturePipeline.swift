@@ -24,13 +24,20 @@ public final class CapturePipeline {
     public func process(_ content: CapturedContent, config: CaptureConfig, now: Date = .now) -> CaptureResult {
         if config.paused { return .paused }
         switch content.kind {
-        case .text: if !config.saveText { return .disabledKind }
+        case .text, .textWithRichText: if !config.saveText { return .disabledKind }
         case .image: if !config.saveImages { return .disabledKind }
         case .files: if !config.saveFiles { return .disabledKind }
         }
         if let app = content.sourceAppID, config.excludedAppIDs.contains(app) { return .excludedApp }
 
-        if let t = content.text, t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .empty }
+        // Check for empty content
+        switch content.kind {
+        case .text(let t) where t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+             .textWithRichText(let t, _) where t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            return .empty
+        default:
+            if content.imageData == nil && content.text == nil && content.filePaths == nil { return .empty }
+        }
         if content.imageData == nil && content.text == nil && content.filePaths == nil { return .empty }
 
         let hash = Hashing.sha256(content.canonicalData)
@@ -48,7 +55,8 @@ public final class CapturePipeline {
                                  text: content.text ?? content.filePaths?.joined(separator: "\n"),
                                  imageRelPath: nil, thumbRelPath: nil, fileSize: 0,
                                  width: nil, height: nil,
-                                 sourceApp: sourceApp, copyCount: 1, lastCopiedAt: nil)
+                                 sourceApp: sourceApp, copyCount: 1, lastCopiedAt: nil,
+                                 richTextRelPath: nil)
         if let data = content.imageData {
             do {
                 let info = try writer.writeImage(data, hashHex: hash)
@@ -80,6 +88,13 @@ public final class CapturePipeline {
             }
         } else if let t = content.text {
             item.fileSize = t.utf8.count
+        }
+        
+        // Write rich text (RTF) if available
+        if let rtfData = content.richText {
+            if let rtfRel = try? writer.writeRichText(rtfData, hashHex: hash) {
+                item.richTextRelPath = rtfRel
+            }
         }
 
         let id = store.insert(item)

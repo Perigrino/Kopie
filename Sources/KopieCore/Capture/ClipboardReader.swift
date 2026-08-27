@@ -24,7 +24,11 @@ public enum ClipboardReader {
         if let tiff = board.data(forType: .tiff) {
             return CapturedContent(kind: .image(tiff), sourceAppID: app)
         }
+        // Check for rich text (RTF) alongside plain text
         if let s = board.string(forType: .string) {
+            if let rtfData = board.data(forType: .rtf), rtfData != Data() {
+                return CapturedContent(kind: .textWithRichText(s, rtfData), sourceAppID: app)
+            }
             return CapturedContent(kind: .text(s), sourceAppID: app)
         }
         return nil

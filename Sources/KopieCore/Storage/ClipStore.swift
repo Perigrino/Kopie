@@ -26,7 +26,10 @@ public final class ClipStore {
       height INTEGER,
       source_app TEXT,
       copy_count INTEGER NOT NULL DEFAULT 1,
-      last_copied_at INTEGER);
+      last_copied_at INTEGER,
+      is_pinned INTEGER NOT NULL DEFAULT 0,
+      pinned_at INTEGER,
+      rich_text_rel_path TEXT);
     CREATE INDEX IF NOT EXISTS idx_ci_created ON clipboard_items(created_at);
     CREATE INDEX IF NOT EXISTS idx_ci_kind ON clipboard_items(kind);
     CREATE INDEX IF NOT EXISTS idx_ci_hash ON clipboard_items(content_hash);
@@ -96,6 +99,15 @@ public final class ClipStore {
         if !existingColumns.contains("last_copied_at") {
             _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN last_copied_at INTEGER", [])
         }
+        if !existingColumns.contains("is_pinned") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0", [])
+        }
+        if !existingColumns.contains("pinned_at") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN pinned_at INTEGER", [])
+        }
+        if !existingColumns.contains("rich_text_rel_path") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN rich_text_rel_path TEXT", [])
+        }
     }
 
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
@@ -162,11 +174,12 @@ public final class ClipStore {
     public func insert(_ item: ClipboardItem) -> Int64 {
         do {
             _ = try db.run(
-        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
          item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
          item.width.flatMap(Int64.init), item.height.flatMap(Int64.init),
-         item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms)])
+         item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms),
+         item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath])
             let id = db.scalarInt64("SELECT last_insert_rowid()")
             if let text = item.text, let tokens = crypto?.searchTokens(for: text), !tokens.isEmpty {
                 indexTokens(tokens, for: id)
@@ -179,7 +192,7 @@ public final class ClipStore {
     }
 
     private static let cols =
-        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at"
+        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path"
 
     private func map(_ r: [Any?]) -> ClipboardItem {
         ClipboardItem(
@@ -197,16 +210,21 @@ public final class ClipStore {
             height: r[11].flatMap { Int($0 as? Int64 ?? 0) },
             sourceApp: r[12] as? String,
             copyCount: Int(r[13] as? Int64 ?? 1),
-            lastCopiedAt: (r[14] as? Int64).map(date))
+            lastCopiedAt: (r[14] as? Int64).map(date),
+            isPinned: (r[15] as? Int64 ?? 0) != 0,
+            pinnedAt: (r[16] as? Int64).map(date),
+            richTextRelPath: r[17] as? String)
     }
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
-        if !f.textQuery.isEmpty, let indexed = searchIndexMatches(f) {
+        // Bypass trigram index for regex queries
+        if !f.textQuery.isEmpty, !f.useRegex, let indexed = searchIndexMatches(f) {
             return indexed
         }
         var whereC = [String](); var params: [Any?] = []
         if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
         if f.favoritesOnly { whereC.append("is_favorite = 1") }
+        if f.pinnedOnly { whereC.append("is_pinned = 1") }
         if let b = f.bucket {
             let cal = Calendar.current
             let now = Date.now
@@ -224,13 +242,27 @@ public final class ClipStore {
         // No index available (no key, or query shorter than a trigram): fetch a
         // generous window and filter in memory after decryption.
         let limit = f.textQuery.isEmpty ? f.limit : max(f.limit, 1000)
-        let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY last_accessed_at DESC, id DESC LIMIT ?"
+        let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY is_pinned DESC, pinned_at DESC, last_accessed_at DESC, id DESC LIMIT ?"
         params.append(limit)
         let rows = (try? db.rows(sql, params)) ?? []
         var items = rows.map { map($0) }
         if !f.textQuery.isEmpty {
             let q = f.textQuery
-            items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(q) }
+            if f.useRegex {
+                // Regex mode: try to compile the pattern and filter
+                if let regex = try? NSRegularExpression(pattern: q, options: []) {
+                    items = items.filter { item in
+                        guard let text = item.text else { return false }
+                        let range = NSRange(text.startIndex..., in: text)
+                        return regex.firstMatch(in: text, options: [], range: range) != nil
+                    }
+                } else {
+                    // Invalid regex: return empty results
+                    items = []
+                }
+            } else {
+                items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(q) }
+            }
         }
         return items
     }
@@ -247,6 +279,7 @@ public final class ClipStore {
         var whereC = [String](); var params: [Any?] = []
         if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
         if f.favoritesOnly { whereC.append("is_favorite = 1") }
+        if f.pinnedOnly { whereC.append("is_pinned = 1") }
         if let b = f.bucket {
             let cal = Calendar.current
             let now = Date.now
@@ -268,11 +301,23 @@ public final class ClipStore {
 
         let sql = "SELECT \(Self.cols) FROM clipboard_items " +
                   "WHERE \(whereC.joined(separator: " AND ")) " +
-                  "ORDER BY last_accessed_at DESC, id DESC LIMIT ?"
+                  "ORDER BY is_pinned DESC, pinned_at DESC, last_accessed_at DESC, id DESC LIMIT ?"
         params.append(max(f.limit, 1000))
         let rows = (try? db.rows(sql, params)) ?? []
         var items = rows.map { map($0) }
-        items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(f.textQuery) }
+        if f.useRegex {
+            if let regex = try? NSRegularExpression(pattern: f.textQuery, options: []) {
+                items = items.filter { item in
+                    guard let text = item.text else { return false }
+                    let range = NSRange(text.startIndex..., in: text)
+                    return regex.firstMatch(in: text, options: [], range: range) != nil
+                }
+            } else {
+                items = []
+            }
+        } else {
+            items = items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(f.textQuery) }
+        }
         return items
     }
 
@@ -306,6 +351,10 @@ public final class ClipStore {
     public func setFavorite(_ id: Int64, _ flag: Bool) {
         _ = try? db.run("UPDATE clipboard_items SET is_favorite = ? WHERE id = ?", [flag ? 1 : 0, id])
     }
+    public func setPinned(_ id: Int64, _ flag: Bool) {
+        _ = try? db.run("UPDATE clipboard_items SET is_pinned = ?, pinned_at = ? WHERE id = ?",
+                        [flag ? 1 : 0, flag ? ms(.now) : nil, id])
+    }
     public func bumpAccessed(_ id: Int64, _ now: Date = .now) {
         _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
     }
@@ -338,7 +387,7 @@ public final class ClipStore {
     }
 
     public func purgeOlder(olderThan cutoff: Date, deleteFavorites: Bool) -> Int64 {
-        let cond = deleteFavorites ? "" : "AND is_favorite = 0"
+        let cond = (deleteFavorites ? "" : "AND is_favorite = 0") + " AND is_pinned = 0"
         let n = (try? db.run("DELETE FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)])) ?? 0
         sweepOrphanIndex()
         return n
@@ -347,13 +396,13 @@ public final class ClipStore {
     public func trimToMax(_ max: Int) {
         let all = count()
         guard all > Int64(max) else { return }
-        // Keep favorites first, then newest; evict the oldest non-favorites beyond the cap.
+        // Keep pinned first, then favorites, then newest; evict the oldest non-pinned non-favorites beyond the cap.
         // `max` is an Int we control, so inlining is safe.
         _ = try? db.run("""
         DELETE FROM clipboard_items
         WHERE id NOT IN (
           SELECT id FROM clipboard_items
-          ORDER BY is_favorite DESC, created_at DESC
+          ORDER BY is_pinned DESC, is_favorite DESC, created_at DESC
           LIMIT \(max)
         )
         """, [])

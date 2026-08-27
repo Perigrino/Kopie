@@ -99,6 +99,22 @@ public final class DiskClipWriter: ClipWriter {
         return ImageStorageInfo(imageRelPath: imgRel, thumbRelPath: thumbRel,
                                 width: w, height: h, byteSize: png.count)
     }
+    
+    /// Writes rich text (RTF) data to disk, encrypted if a key is available.
+    /// Returns the relative path to the stored file.
+    public func writeRichText(_ data: Data, hashHex: String) throws -> String {
+        let relPath = "rtf/\(hashHex).rtf"
+        let fullPath = absPath(relPath)
+        let fm = FileManager.default
+        try fm.createDirectory(at: absPath("rtf"), withIntermediateDirectories: true)
+        try encrypted(data).write(to: fullPath, options: .atomic)
+        return relPath
+    }
+    
+    /// Loads rich text (RTF) data from disk, decrypting if necessary.
+    public func loadRichText(relPath: String) -> Data? {
+        readDecrypted(at: absPath(relPath))
+    }
 
     /// Wraps plaintext in the magic header when a key is available.
     private func encrypted(_ data: Data) -> Data {

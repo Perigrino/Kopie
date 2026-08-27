@@ -5,6 +5,7 @@ import AppKit
 struct DetailsPanel: View {
     let item: ClipboardItem
     @EnvironmentObject var state: AppState
+    @State private var showRichText = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -23,11 +24,29 @@ struct DetailsPanel: View {
 
     @ViewBuilder private var content: some View {
         if item.kind == .text {
-            ScrollView {
-                Text(item.text ?? "")
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                // Toggle between plain text and rich text if rich text is available
+                if item.isRichText {
+                    Picker("", selection: $showRichText) {
+                        Text("Plain Text").tag(false)
+                        Text("Rich Text").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                
+                ScrollView {
+                    if showRichText, let rtfData = state.richText(for: item) {
+                        // Render RTF content
+                        RichTextRepresentation(data: rtfData)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text(item.text ?? "")
+                            .font(.body)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
         } else if item.kind == .file {
             ScrollView {
@@ -81,6 +100,8 @@ struct DetailsPanel: View {
             if item.kind == .image, let d = item.dimensionLabel { GridRow { meta("Dimensions", d) } }
             GridRow { meta("Size", ByteCountFormatter.string(fromByteCount: Int64(item.fileSize), countStyle: .file)) }
             if item.isFavorite { GridRow { meta("Favorite", "Yes") } }
+            if item.isPinned { GridRow { meta("Pinned", "Yes") } }
+            if item.isRichText { GridRow { meta("Rich Text", "Yes") } }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -96,30 +117,48 @@ struct DetailsPanel: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            // Primary action: Copy
             Button {
                 state.copyBack(item)
             } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Image(systemName: "doc.on.doc")
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut("c", modifiers: .command)
-
+            .help("Copy to clipboard (⌘C)")
+            
+            Divider().frame(height: 20)
+            
+            // Toggle actions
             Button {
                 state.toggleFavorite(item)
             } label: {
-                Label(item.isFavorite ? "Unfavorite" : "Favorite", systemImage: item.isFavorite ? "star.fill" : "star")
+                Image(systemName: item.isFavorite ? "star.fill" : "star")
+                    .foregroundStyle(item.isFavorite ? .yellow : .primary)
             }
             .buttonStyle(.bordered)
-
+            .help(item.isFavorite ? "Remove from favorites" : "Add to favorites")
+            
+            Button {
+                state.togglePin(item)
+            } label: {
+                Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                    .foregroundStyle(item.isPinned ? .blue : .primary)
+            }
+            .buttonStyle(.bordered)
+            .help(item.isPinned ? "Unpin item" : "Pin to top")
+            
             Spacer()
-
+            
+            // Destructive action: Delete
             Button(role: .destructive) {
                 state.remove(item)
             } label: {
-                Label("Delete", systemImage: "trash")
+                Image(systemName: "trash")
             }
             .buttonStyle(.bordered)
+            .help("Delete item")
         }
         .padding(.top, 4)
     }

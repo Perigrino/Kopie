@@ -29,4 +29,6 @@ public protocol ClipWriter {
     func imageData(relPath: String) throws -> Data
     func loadThumb(relPath: String?) -> NSImage?
     func fileSize(relPath: String) -> Int
+    func writeRichText(_ data: Data, hashHex: String) throws -> String
+    func loadRichText(relPath: String) -> Data?
 }

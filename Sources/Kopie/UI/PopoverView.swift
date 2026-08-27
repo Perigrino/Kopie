@@ -69,9 +69,18 @@ struct PopoverView: View {
     private var searchBar: some View {
         HStack {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search clipboard…", text: $state.searchText)
+            TextField(state.isRegexEnabled ? "Search with regex…" : "Search clipboard…", text: $state.searchText)
                 .textFieldStyle(.plain).focused($searchFocused)
                 .onSubmit { state.refresh() }
+            Button {
+                state.isRegexEnabled.toggle()
+                state.refresh()
+            } label: {
+                Image(systemName: state.isRegexEnabled ? "chevron.forward.square" : "text.magnifyingglass")
+                    .foregroundStyle(state.isRegexEnabled ? .blue : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(state.isRegexEnabled ? "Disable regex search" : "Enable regex search")
             if !state.searchText.isEmpty {
                 Button { state.searchText = ""; state.refresh() } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
@@ -113,6 +122,7 @@ struct PopoverView: View {
                                            onCopy: { copy(item) },
                                            onRemove: { state.remove(item) },
                                            onFavorite: { state.toggleFavorite(item) },
+                                           onPin: { state.togglePin(item) },
                                            onToggleSelect: { toggleSelect(item.id) },
                                            onHoverChange: { hovering in
                                                previewID = hovering ? item.id : (previewID == item.id ? nil : previewID)

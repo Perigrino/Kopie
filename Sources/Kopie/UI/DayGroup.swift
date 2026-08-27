@@ -10,9 +10,21 @@ struct DayGroup: Identifiable {
 
 func groupByDay(_ items: [ClipboardItem]) -> [DayGroup] {
     let cal = Calendar.current
+    
+    // Separate pinned items from regular items
+    let pinnedItems = items.filter { $0.isPinned }
+    let regularItems = items.filter { !$0.isPinned }
+    
+    var result: [DayGroup] = []
+    
+    // Pinned section first (if any)
+    if !pinnedItems.isEmpty {
+        result.append(DayGroup(id: "pinned", label: "Pinned", items: pinnedItems))
+    }
+    
+    // Then group regular items by day
     var groups: [String: DayGroup] = [:]
-    var order: [String] = []
-    for it in items {
+    for it in regularItems {
         let start = cal.startOfDay(for: it.createdAt)
         let key = start.timeIntervalSince1970.description
         if groups[key] == nil {
@@ -20,9 +32,13 @@ func groupByDay(_ items: [ClipboardItem]) -> [DayGroup] {
                         start == cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: .now))! ? "Yesterday" :
                         it.createdAt.formatted(date: .abbreviated, time: .omitted)
             groups[key] = DayGroup(id: key, label: label, items: [])
-            order.append(key)
         }
         groups[key]!.items.append(it)
     }
-    return order.map { groups[$0]! }
+    
+    // Sort groups by date descending (most recent day first)
+    let sortedGroups = groups.values.sorted { $0.id > $1.id }
+    result.append(contentsOf: sortedGroups)
+    
+    return result
 }

@@ -26,14 +26,18 @@ public struct QueryFilter: Hashable, Sendable {
     public var kind: ClipKind? = nil
     public var bucket: DateBucket? = nil
     public var favoritesOnly: Bool = false
+    public var pinnedOnly: Bool = false
+    public var useRegex: Bool = false
     public var limit: Int = 200
 
     public init(textQuery: String = "", kind: ClipKind? = nil, bucket: DateBucket? = nil,
-                favoritesOnly: Bool = false, limit: Int = 200) {
+                favoritesOnly: Bool = false, pinnedOnly: Bool = false, useRegex: Bool = false, limit: Int = 200) {
         self.textQuery = textQuery
         self.kind = kind
         self.bucket = bucket
         self.favoritesOnly = favoritesOnly
+        self.pinnedOnly = pinnedOnly
+        self.useRegex = useRegex
         self.limit = limit
     }
 }
@@ -47,6 +51,7 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     public var contentHash: String
     public var text: String?
     public var imageRelPath: String?
+    public var richTextRelPath: String?
     public var thumbRelPath: String?
     public var fileSize: Int
     public var width: Int?
@@ -54,11 +59,15 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     public var sourceApp: String?
     public var copyCount: Int
     public var lastCopiedAt: Date?
+    public var isPinned: Bool
+    public var pinnedAt: Date?
 
     public init(id: Int64, kind: ClipKind, createdAt: Date, lastAccessedAt: Date, isFavorite: Bool,
                 contentHash: String, text: String?, imageRelPath: String?, thumbRelPath: String?,
                 fileSize: Int, width: Int?, height: Int?, sourceApp: String? = nil,
-                copyCount: Int = 1, lastCopiedAt: Date? = nil) {
+                copyCount: Int = 1, lastCopiedAt: Date? = nil,
+                isPinned: Bool = false, pinnedAt: Date? = nil,
+                richTextRelPath: String? = nil) {
         self.id = id
         self.kind = kind
         self.createdAt = createdAt
@@ -67,6 +76,7 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         self.contentHash = contentHash
         self.text = text
         self.imageRelPath = imageRelPath
+        self.richTextRelPath = richTextRelPath
         self.thumbRelPath = thumbRelPath
         self.fileSize = fileSize
         self.width = width
@@ -74,6 +84,8 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         self.sourceApp = sourceApp
         self.copyCount = copyCount
         self.lastCopiedAt = lastCopiedAt
+        self.isPinned = isPinned
+        self.pinnedAt = pinnedAt
     }
 
     public var charCount: Int? { text?.count }
@@ -94,6 +106,7 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     public var copyCountLabel: String {
         copyCount == 1 ? "1 copy" : "\(copyCount) copies"
     }
+    public var isRichText: Bool { richTextRelPath != nil }
     public var preview: String {
         if kind == .file {
             let names = (filePaths ?? []).map { ($0 as NSString).lastPathComponent }
@@ -118,6 +131,7 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
 public struct CapturedContent: Sendable {
     public enum Kind: Sendable {
         case text(String)
+        case textWithRichText(String, Data)  // plain text + RTF
         case image(Data)
         case files([String])
     }
@@ -131,17 +145,28 @@ public struct CapturedContent: Sendable {
 
     public var clipKind: ClipKind {
         switch kind {
-        case .text: .text
+        case .text, .textWithRichText: .text
         case .image: .image
         case .files: .file
         }
     }
-    public var text: String? { if case .text(let s) = kind { s } else { nil } }
+    public var text: String? {
+        switch kind {
+        case .text(let s): return s
+        case .textWithRichText(let s, _): return s
+        default: return nil
+        }
+    }
     public var imageData: Data? { if case .image(let d) = kind { d } else { nil } }
     public var filePaths: [String]? { if case .files(let p) = kind { p } else { nil } }
+    public var richText: Data? {
+        if case .textWithRichText(_, let d) = kind { return d }
+        return nil
+    }
     public var canonicalData: Data {
         switch kind {
         case .text(let s): Data(s.utf8)
+        case .textWithRichText(let s, _): Data(s.utf8)
         case .image(let d): d
         case .files(let p): Data(p.joined(separator: "\n").utf8)
         }

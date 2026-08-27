@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum HistoryFilter: String, CaseIterable, Identifiable {
-    case all, text, images, files, today, favorites
+    case all, text, images, files, today, favorites, pinned
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -11,6 +11,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
         case .files: "Files"
         case .today: "Today"
         case .favorites: "Favorites"
+        case .pinned: "Pinned"
         }
     }
     var symbol: String {
@@ -21,6 +22,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
         case .files: "folder"
         case .today: "clock"
         case .favorites: "star"
+        case .pinned: "pin"
         }
     }
 }

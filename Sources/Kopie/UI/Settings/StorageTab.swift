@@ -5,6 +5,9 @@ struct SettingsStorageTab: View {
     @State private var showClearCacheConfirm = false
     @State private var showClearAllConfirm = false
     @State private var stats: (count: Int64, bytes: Int64) = (0, 0)
+    @State private var showExportAlert = false
+    @State private var showImportAlert = false
+    @State private var alertMessage = ""
 
     var body: some View {
         ScrollView {
@@ -28,6 +31,18 @@ struct SettingsStorageTab: View {
                 }
                 Text("Clear Cache removes regenerable thumbnails. Clear All Data removes every item and file.")
                     .font(.caption).foregroundStyle(.secondary)
+                
+                Divider()
+                
+                Group {
+                    Text("Export / Import").font(.headline)
+                    HStack {
+                        Button("Export History…") { showExportPanel() }
+                        Button("Import History…") { showImportPanel() }
+                    }
+                    Text("Export saves all clipboard items to a JSON file. Import adds items from a JSON file, skipping duplicates.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             .padding(20)
         }
@@ -50,4 +65,36 @@ struct SettingsStorageTab: View {
                 onCancel: { showClearAllConfirm = false })
         }
     }
+    
+    private func showExportPanel() {
+        let panel = NSSavePanel()
+        panel.title = "Export Clipboard History"
+        panel.nameFieldStringValue = "kopie-history-\(DateFormatter.exportDateFormatter.string(from: Date())).json"
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        
+        state.exportHistory(to: url)
+    }
+    
+    private func showImportPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Clipboard History"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        
+        state.importHistory(from: url)
+    }
 }
+
+private extension DateFormatter {
+    static let exportDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
+        return f
+    }()}

@@ -11,6 +11,7 @@ struct HistoryRow: View {
     var onCopy: () -> Void
     var onRemove: () -> Void
     var onFavorite: () -> Void
+    var onPin: () -> Void = {}
     var onToggleSelect: (() -> Void)? = nil
     /// When false, tapping the row does not copy (lets a containing List handle selection).
     var copyOnTap: Bool = true
@@ -28,7 +29,14 @@ struct HistoryRow: View {
             }
             icon
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.preview).lineLimit(1).font(.body)
+                HStack(spacing: 4) {
+                    if item.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                    Text(item.preview).lineLimit(1).font(.body)
+                }
                 metadataLine
             }
             Spacer()
@@ -47,6 +55,15 @@ struct HistoryRow: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0; onHoverChange?(hovering) }
+        .contextMenu {
+            ContextMenuBuilder(
+                item: item,
+                onCopy: onCopy,
+                onRemove: onRemove,
+                onFavorite: onFavorite,
+                onPin: onPin
+            )
+        }
         .modifier(TapAction(enabled: selectionMode || copyOnTap) {
             if selectionMode { onToggleSelect?() ?? () }
             else { onCopy() }
@@ -75,6 +92,14 @@ struct HistoryRow: View {
             Text(item.typeLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            if item.isRichText {
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("Rich")
+                    .font(.caption2)
+                    .foregroundStyle(.blue)
+            }
             
             // Time
             Text("·")
@@ -172,6 +197,9 @@ struct HistoryRow: View {
 
     @ViewBuilder private var quickButtons: some View {
         HStack(spacing: 8) {
+            Button(action: onPin) {
+                Image(systemName: item.isPinned ? "pin.fill" : "pin")
+            }.buttonStyle(.plain).foregroundStyle(item.isPinned ? .blue : .secondary)
             Button(action: onFavorite) {
                 Image(systemName: item.isFavorite ? "star.fill" : "star")
             }.buttonStyle(.plain).foregroundStyle(item.isFavorite ? .yellow : .secondary)

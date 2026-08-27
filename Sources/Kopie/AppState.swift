@@ -7,12 +7,15 @@ final class AppState: ObservableObject {
     @Published var items: [ClipboardItem] = []
     @Published var searchText: String = ""
     @Published var isPaused: Bool = false
+    @Published var isRegexEnabled: Bool = false
     @Published var showOnboarding: Bool = false
     @Published var isReturnLaunch = false
     @Published var excludedApps: [SettingsStore.ExcludedApp] = []
     @Published var ambientSpeed: SettingsStore.AmbientSpeed = .slow
     let store: ClipStore
     private let writer: DiskClipWriter
+    private let thumbGenerator: ThumbnailGenerator
+    private lazy var historyExporter = HistoryExporter(store: store, writer: writer)
     private let pipeline: CapturePipeline
     private let restoreSVC: RestoreService
     private let monitor: ClipboardMonitor
@@ -22,6 +25,7 @@ final class AppState: ObservableObject {
     private static let thumbCache = NSCache<NSString, NSImage>()
 
     /// Loads (and caches) the thumbnail for an image item, falling back to the full image.
+    /// Uses lazy generation: if no thumbnail exists, generates one on-demand.
     func thumbnail(for item: ClipboardItem) -> NSImage? {
         guard item.kind == .image else { return nil }
         if let rel = item.thumbRelPath ?? item.imageRelPath {
@@ -30,6 +34,17 @@ final class AppState: ObservableObject {
             if let img = writer.loadThumb(relPath: rel) {
                 Self.thumbCache.setObject(img, forKey: key)
                 return img
+            }
+        }
+        // Lazy generation: try to generate thumbnail on-demand
+        if let imageRel = item.imageRelPath {
+            let hashHex = (imageRel as NSString).lastPathComponent.replacingOccurrences(of: ".png", with: "")
+            if let thumbRel = thumbGenerator.generateThumbnailIfNeeded(imageRelPath: imageRel, hashHex: hashHex) {
+                if let img = writer.loadThumb(relPath: thumbRel) {
+                    let key = thumbRel as NSString
+                    Self.thumbCache.setObject(img, forKey: key)
+                    return img
+                }
             }
         }
         return nil
@@ -47,10 +62,17 @@ final class AppState: ObservableObject {
         }
         return nil
     }
+    
+    /// Loads rich text (RTF) data for an item, if available.
+    func richText(for item: ClipboardItem) -> Data? {
+        guard let rel = item.richTextRelPath else { return nil }
+        return writer.loadRichText(relPath: rel)
+    }
 
     init() {
         store = ClipStore()
         writer = DiskClipWriter()
+        thumbGenerator = ThumbnailGenerator()
         let pipeline = CapturePipeline(store: store, writer: writer)
         let restore = RestoreService()
         let monitor = ClipboardMonitor(reader: { ClipboardReader.read() },
@@ -153,6 +175,7 @@ final class AppState: ObservableObject {
     func refresh(filter: QueryFilter? = nil) {
         var f = QueryFilter()
         f.textQuery = searchText
+        f.useRegex = isRegexEnabled
         if let filter { f.kind = filter.kind; f.bucket = filter.bucket; f.favoritesOnly = filter.favoritesOnly }
         items = store.query(f)
     }
@@ -172,6 +195,7 @@ final class AppState: ObservableObject {
         refresh()
     }
     func toggleFavorite(_ item: ClipboardItem) { store.setFavorite(item.id, !item.isFavorite); refresh() }
+    func togglePin(_ item: ClipboardItem) { store.setPinned(item.id, !item.isPinned); refresh() }
     func remove(_ item: ClipboardItem) { store.delete([item.id]); refresh() }
     func remove(_ ids: [Int64]) { store.delete(ids); refresh() }
     func removeAll() {
@@ -191,6 +215,27 @@ final class AppState: ObservableObject {
         showOnboarding = false
         startMonitoring()
         runRetentionPolicy()
+    }
+    
+    // MARK: - Export/Import
+    
+    func exportHistory(to url: URL) {
+        do {
+            try historyExporter.export(to: url)
+            KopieNotifications.show(title: "Export Complete", message: "History exported successfully")
+        } catch {
+            KopieNotifications.show(title: "Export Failed", message: error.localizedDescription)
+        }
+    }
+    
+    func importHistory(from url: URL) {
+        do {
+            let count = try historyExporter.import(from: url)
+            refresh()
+            KopieNotifications.show(title: "Import Complete", message: "\(count) items imported")
+        } catch {
+            KopieNotifications.show(title: "Import Failed", message: error.localizedDescription)
+        }
     }
 }
 

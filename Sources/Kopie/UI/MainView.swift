@@ -18,6 +18,7 @@ struct MainView: View {
         case .files: f.kind = .file
         case .today: f.bucket = .today
         case .favorites: f.favoritesOnly = true
+        case .pinned: f.pinnedOnly = true
         default: break
         }
         return state.store.query(f)
@@ -128,6 +129,7 @@ struct MainView: View {
                                        onCopy: { copy(item) },
                                        onRemove: { state.remove(item) },
                                        onFavorite: { state.toggleFavorite(item) },
+                                       onPin: { state.togglePin(item) },
                                        copyOnTap: false)
                                 .tag(item.id)
                         }
@@ -136,7 +138,20 @@ struct MainView: View {
             }
         }
         .listStyle(.inset)
-        .searchable(text: $searchText, prompt: "Search clipboard…")
+        .searchable(text: $searchText, prompt: state.isRegexEnabled ? "Search with regex…" : "Search clipboard…")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    state.isRegexEnabled.toggle()
+                    state.refresh()
+                } label: {
+                    Image(systemName: state.isRegexEnabled ? "chevron.forward.square" : "text.magnifyingglass")
+                        .foregroundStyle(state.isRegexEnabled ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(state.isRegexEnabled ? "Disable regex search" : "Enable regex search")
+            }
+        }
     }
 
     // MARK: - Detail
