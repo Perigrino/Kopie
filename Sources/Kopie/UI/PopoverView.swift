@@ -74,8 +74,8 @@ struct PopoverView: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 10)
             
-            // Search field
-            TextField(state.isRegexEnabled ? "Search with regex…" : "Search clipboard…", text: $state.searchText)
+            // Search field - auto-detects regex vs plain text
+            TextField("Search clipboard…", text: $state.searchText)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .onSubmit { state.refresh() }
@@ -95,33 +95,8 @@ struct PopoverView: View {
                         .foregroundStyle(.quaternary)
                 }
                 .buttonStyle(.plain)
-                .padding(.trailing, 6)
+                .padding(.trailing, 8)
             }
-            
-            // Regex toggle (integrated into search bar)
-            Divider()
-                .frame(height: 18)
-                .padding(.horizontal, 4)
-            
-            Button { 
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    state.isRegexEnabled.toggle()
-                    state.refresh()
-                }
-            } label: {
-                Text(".*")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(state.isRegexEnabled ? .white : .secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(state.isRegexEnabled ? Color.accentColor : Color.clear)
-                    )
-            }
-            .buttonStyle(.plain)
-            .help(state.isRegexEnabled ? "Disable regex search" : "Enable regex search")
-            .padding(.trailing, 8)
         }
         .padding(.vertical, 6)
         .padding(.horizontal, DS.pad)

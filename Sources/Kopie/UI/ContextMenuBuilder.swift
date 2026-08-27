@@ -42,7 +42,7 @@ struct ContextMenuBuilder: View {
                 }
             }
             
-            if ContentDetector.detectContentType(text) == .email {
+            if case .email = ContentDetector.detectContentType(text) {
                 Button {
                     if let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                        let mailURL = URL(string: "mailto:\(encoded)") {
@@ -53,7 +53,7 @@ struct ContextMenuBuilder: View {
                 }
             }
             
-            if ContentDetector.detectContentType(text) == .phoneNumber {
+            if case .phoneNumber = ContentDetector.detectContentType(text) {
                 Button {
                     let cleaned = text.filter { $0.isNumber || $0 == "+" }
                     if let phoneURL = URL(string: "tel:\(cleaned)") {

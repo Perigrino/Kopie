@@ -138,27 +138,7 @@ struct MainView: View {
             }
         }
         .listStyle(.inset)
-        .searchable(text: $searchText, prompt: state.isRegexEnabled ? "Search with regex…" : "Search clipboard…")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    state.isRegexEnabled.toggle()
-                    state.refresh()
-                } label: {
-                    Text(".*")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(state.isRegexEnabled ? .white : .secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule()
-                                .fill(state.isRegexEnabled ? Color.accentColor : Color.clear)
-                        )
-                }
-                .buttonStyle(.plain)
-                .help(state.isRegexEnabled ? "Disable regex search" : "Enable regex search")
-            }
-        }
+        .searchable(text: $searchText, prompt: "Search clipboard…")
     }
 
     // MARK: - Detail

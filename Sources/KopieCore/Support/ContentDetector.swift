@@ -5,11 +5,31 @@ public enum ContentType: Sendable {
     case url
     case email
     case phoneNumber
-    case code
+    case code(language: String?)
+    case richText
     case plainText
 }
 
 public enum ContentDetector {
+    /// Detects the programming language from code content.
+    public static func detectLanguage(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("func ") && trimmed.contains("->") { return "swift" }
+        if trimmed.contains("def ") || trimmed.contains("__init__") { return "python" }
+        if trimmed.contains("function ") || trimmed.contains("=>") { return "javascript" }
+        if trimmed.contains("<html") || trimmed.contains("<div") { return "html" }
+        if trimmed.contains("color:") || trimmed.contains("margin:") { return "css" }
+        if trimmed.hasPrefix("{") && trimmed.hasSuffix("}") { return "json" }
+        if trimmed.contains("# ") || trimmed.contains("## ") { return "markdown" }
+        if trimmed.contains("SELECT ") || trimmed.contains("CREATE TABLE") { return "sql" }
+        if trimmed.hasPrefix("#!") || trimmed.contains("echo ") { return "bash" }
+        if trimmed.contains("fn ") && trimmed.contains("let mut") { return "rust" }
+        if trimmed.contains("package ") && trimmed.contains("func ") { return "go" }
+        if trimmed.contains("public class ") { return "java" }
+        if trimmed.contains("#include ") || trimmed.contains("std::") { return "cpp" }
+        return nil
+    }
+    
     /// Detects the content type of a text string.
     public static func detectContentType(_ text: String) -> ContentType {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -75,7 +95,8 @@ public enum ContentDetector {
         
         // If more than 30% of lines match code patterns, consider it code
         if lines.count > 0 && Double(codeLineCount) / Double(lines.count) > 0.3 {
-            return .code
+            let language = detectLanguage(trimmed)
+            return .code(language: language)
         }
         
         return .plainText

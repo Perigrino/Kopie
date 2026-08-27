@@ -22,27 +22,37 @@ struct DetailsPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    private var contentType: ContentType {
+        guard let text = item.text else { return .plainText }
+        return ContentDetector.detectContentType(text)
+    }
+    
     @ViewBuilder private var content: some View {
         if item.kind == .text {
             VStack(alignment: .leading, spacing: 8) {
-                // Check if RTF data is actually available
-                let hasRTF = item.isRichText && state.richText(for: item) != nil
+                // Load rich text data once
+                let rtfData = item.isRichText ? state.richText(for: item) : nil
+                let hasRTF = rtfData != nil
+                let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
                 
                 // Toggle between plain text and rich text if RTF data is available
                 if hasRTF {
                     Picker("", selection: $showRichText) {
                         Text("Plain Text").tag(false)
-                        Text("Rich Text").tag(true)
+                        Text("Formatted").tag(true)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
                 }
                 
                 ScrollView {
-                    if hasRTF, showRichText, let rtfData = state.richText(for: item) {
+                    if hasRTF, showRichText, let data = rtfData {
                         // Render rich text content (RTF or HTML)
-                        let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
-                        RichTextRepresentation(data: rtfData, isHTML: isHTML)
+                        RichTextRepresentation(data: data, isHTML: isHTML)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if !showRichText || !hasRTF, case .code(let language) = contentType {
+                        // Render code block with language detection
+                        CodeBlockView(code: item.text ?? "", language: language)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         Text(item.text ?? "")
@@ -103,6 +113,9 @@ struct DetailsPanel: View {
             if item.kind == .file, let n = item.filePaths?.count { GridRow { meta("Files", "\(n)") } }
             if item.kind == .image, let d = item.dimensionLabel { GridRow { meta("Dimensions", d) } }
             GridRow { meta("Size", ByteCountFormatter.string(fromByteCount: Int64(item.fileSize), countStyle: .file)) }
+            if item.kind == .text, case .code(let lang) = contentType, let language = lang {
+                GridRow { meta("Language", language.uppercased()) }
+            }
             if item.isFavorite { GridRow { meta("Favorite", "Yes") } }
             if item.isPinned { GridRow { meta("Pinned", "Yes") } }
             if item.isRichText { GridRow { meta("Rich Text", "Yes") } }

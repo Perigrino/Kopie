@@ -7,7 +7,7 @@ final class AppState: ObservableObject {
     @Published var items: [ClipboardItem] = []
     @Published var searchText: String = ""
     @Published var isPaused: Bool = false
-    @Published var isRegexEnabled: Bool = false
+
     @Published var showOnboarding: Bool = false
     @Published var isReturnLaunch = false
     @Published var excludedApps: [SettingsStore.ExcludedApp] = []
@@ -175,7 +175,10 @@ final class AppState: ObservableObject {
     func refresh(filter: QueryFilter? = nil) {
         var f = QueryFilter()
         f.textQuery = searchText
-        f.useRegex = isRegexEnabled
+        // Auto-detect regex: try to compile as regex, if valid use regex search
+        if !searchText.isEmpty {
+            f.useRegex = searchText.isValidRegex
+        }
         if let filter { f.kind = filter.kind; f.bucket = filter.bucket; f.favoritesOnly = filter.favoritesOnly }
         items = store.query(f)
     }
