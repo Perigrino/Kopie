@@ -50,6 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             DispatchQueue.main.async { GlobalActions.openOnboarding?() }
         }
 
+        // Headless smoke hook: skip onboarding and open the main window directly.
+        if CommandLine.arguments.contains("--smoke-main-window") {
+            state.showOnboarding = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.showMainWindow()
+            }
+        }
     }
 
 

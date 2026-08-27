@@ -160,4 +160,59 @@ final class CapturePipelineTests: XCTestCase {
         guard case .captured = r else { return XCTFail("expected captured, got \(r)") }
         XCTAssertEqual(store.count(), 2)
     }
+
+    // MARK: - Rich text round-trip
+
+    private func assertRoundTrip(_ attr: NSAttributedString?, _ what: String) {
+        XCTAssertNotNil(attr, "\(what) failed to parse")
+        guard let attr else { return }
+        var hasBold = false
+        attr.enumerateAttribute(.font, in: NSRange(0..<attr.length)) { val, _, _ in
+            if let f = val as? NSFont, f.fontDescriptor.symbolicTraits.contains(.bold) { hasBold = true }
+        }
+        XCTAssertTrue(hasBold, "\(what) lost formatting attributes")
+    }
+
+    func test_richTextRTFRoundTrip() {
+        let rtf = "{\\rtf1\\ansi {\\b Bold} plain}".data(using: .utf8)!
+        let r = pipe.process(.init(kind: .textWithRichText("Bold plain", rtf), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        let item = store.get(id)
+        XCTAssertNotNil(item?.richTextRelPath, "richTextRelPath not set — capture did not persist RTF")
+        XCTAssertTrue(item?.isRichText ?? false)
+        XCTAssertEqual(item?.text, "Bold plain", "plain text fallback missing")
+        guard let rel = item?.richTextRelPath else { return }
+        guard let loaded = writer.loadRichText(relPath: rel) else { return XCTFail("loadRichText returned nil — stored file unreadable") }
+        XCTAssertEqual(loaded, rtf, "RTF data corrupted in storage round-trip")
+        assertRoundTrip(NSAttributedString(rtf: loaded, documentAttributes: nil), "stored RTF")
+    }
+
+    func test_richTextHTMLRoundTrip() {
+        let html = "<html><body><b>Bold</b> plain</body></html>".data(using: .utf8)!
+        let r = pipe.process(.init(kind: .textWithHTML("Bold plain", html), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r else { return XCTFail("expected captured, got \(r)") }
+        let item = store.get(id)
+        XCTAssertNotNil(item?.richTextRelPath, "richTextRelPath not set — capture did not persist HTML")
+        guard let rel = item?.richTextRelPath else { return }
+        XCTAssertTrue(rel.hasSuffix(".html"), "HTML stored without .html suffix — renderer will misdetect format")
+        guard let loaded = writer.loadRichText(relPath: rel) else { return XCTFail("loadRichText returned nil — stored file unreadable") }
+        XCTAssertEqual(loaded, html, "HTML data corrupted in storage round-trip")
+        assertRoundTrip(NSAttributedString(html: loaded, documentAttributes: nil), "stored HTML")
+    }
+
+    func test_richTextRestoreWritesBothPasteboardTypes() {
+        let rtf = "{\\rtf1\\ansi {\\b Bold} plain}".data(using: .utf8)!
+        let r = pipe.process(.init(kind: .textWithRichText("Bold plain", rtf), sourceAppID: nil), config: .default)
+        guard case .captured(let id) = r, let item = store.get(id) else { return XCTFail("capture failed") }
+        let board = NSPasteboard(name: .init("kopie-test-\(UUID().uuidString)"))
+        board.clearContents()
+        // RestoreService targets .general; verify via the same code path instead:
+        // it must load the RTF data through the writer.
+        let svc = RestoreService()
+        svc.restore(item, writer: writer)
+        let general = NSPasteboard.general
+        XCTAssertEqual(general.string(forType: .string), "Bold plain", "plain text not restored")
+        XCTAssertNotNil(general.data(forType: .rtf), "RTF data not restored to pasteboard")
+        _ = board
+    }
 }

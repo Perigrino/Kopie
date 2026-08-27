@@ -48,7 +48,7 @@ struct RichTextRepresentation: NSViewRepresentable {
         }
 
         if let attrStr = attributedString {
-            textView.textStorage?.setAttributedString(attrStr)
+            textView.textStorage?.setAttributedString(Self.normalized(attrStr))
         } else if let plainText = String(data: data, encoding: .utf8) {
             textView.string = plainText
         }
@@ -61,6 +61,26 @@ struct RichTextRepresentation: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSTextView, context: Context) {
         // Data is baked in at init; nothing to update.
+    }
+
+    /// Strips hard-coded colors from copied rich text so it stays readable in
+    /// both light and dark mode. HTML/RTF from other apps often carries explicit
+    /// colors (e.g. white text from a dark-mode chat, black text from a web page)
+    /// that become invisible against our background. Structure (bold, italic,
+    /// lists, headings) is preserved; links are re-styled with the system accent.
+    private static func normalized(_ source: NSAttributedString) -> NSAttributedString {
+        let m = NSMutableAttributedString(attributedString: source)
+        let full = NSRange(0..<m.length)
+        m.removeAttribute(.foregroundColor, range: full)
+        m.removeAttribute(.backgroundColor, range: full)
+        m.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
+        m.enumerateAttribute(.link, in: full) { value, range, _ in
+            if value != nil {
+                m.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+                m.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            }
+        }
+        return m
     }
 
     func sizeThatFits(_ proposedSize: ProposedViewSize,
