@@ -81,31 +81,25 @@ struct FormattedCodeView: View {
     // MARK: - Code
 
     private var codeArea: some View {
-        ScrollView([.horizontal, .vertical], showsIndicators: true) {
-            HStack(alignment: .top, spacing: 0) {
-                // Line-number gutter
-                VStack(alignment: .trailing, spacing: 0) {
-                    ForEach(1...lineCount, id: \.self) { n in
-                        Text("\(n)")
+        // Vertical scroll only so text wraps to the panel width (responsive).
+        ScrollView(showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Each logical line is a row: a number gutter + the wrapping line.
+                // Wrapped continuation lines flow under the number's row.
+                ForEach(Array(lines.enumerated()), id: \.offset) { idx, line in
+                    HStack(alignment: .top, spacing: 0) {
+                        Text("\(idx + 1)")
                             .font(.system(size: 12, weight: .regular, design: .monospaced))
                             .foregroundStyle(fg.opacity(0.45))
                             .frame(width: 30, alignment: .trailing)
+                            .padding(.trailing, 10)
                             .padding(.vertical, 1)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .background(fg.opacity(0.06))
-
-                // Code
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                         Text(AttributedString(line))
-                            .fixedSize(horizontal: true, vertical: false)
                             .textSelection(.enabled)
                             .padding(.vertical, 1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .padding(.horizontal, 12)
             }
             .padding(.vertical, 10)
         }

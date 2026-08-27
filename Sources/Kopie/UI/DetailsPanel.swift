@@ -64,13 +64,10 @@ struct DetailsPanel: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } else {
-                            ScrollView {
-                                Text(item.text ?? "")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                            // Not rich text and not detected code: friendly empty state.
+                            EmptyStateView(symbol: "textformat",
+                                           title: "No rich text",
+                                           message: "This copied item is plain text — it has no rich formatting like bold, italics, colours, or links. Switch to the Plain Text tab to see the raw text.")
                         }
                     } else {
                         // Plain Text tab
