@@ -19,6 +19,13 @@ Plan: `docs/superpowers/plans/2026-08-16-kopie.md`
 - 5-step first-run onboarding, pause/resume/cleared notifications
 - Settings: General, Clipboard, Automatic Cleanup, Privacy (ignored apps), Storage
 - Main window with sidebar filters (All / Text / Images / Today / Favorites)
+- **Formatted viewer** — the "Formatted" tab auto-detects the language of any copied text
+  (JSON, HTML, SQL, Swift, Python, etc.), safely pretty-prints JSON, applies syntax
+  highlighting that adapts to light/dark mode, and renders a developer card with a
+  language badge, line numbers, a copy button, and wrapping that stays responsive to
+  the panel width
+- **Rich text support** — HTML/RTF content (bold, italic, colour, links) is captured and
+  rendered readably, with colours normalised for legibility
 - **Your clipboard stays on your Mac. Kopie does not upload or share your clipboard history.**
 
 ## Commands
