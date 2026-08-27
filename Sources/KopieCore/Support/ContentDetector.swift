@@ -27,6 +27,14 @@ public enum ContentDetector {
         if trimmed.contains("package ") && trimmed.contains("func ") { return "go" }
         if trimmed.contains("public class ") { return "java" }
         if trimmed.contains("#include ") || trimmed.contains("std::") { return "cpp" }
+        // JavaScript/TypeScript signals: const/let/var bindings, await, arrow
+        // functions, and ES module imports.
+        if trimmed.contains("const ") || trimmed.contains("await ")
+            || trimmed.contains("=>") || trimmed.contains("require(")
+            || trimmed.contains("interface ") || trimmed.contains("typeof ")
+            || trimmed.contains("console.log(") || trimmed.contains("import ") {
+            return "typescript"
+        }
         return nil
     }
     
@@ -61,13 +69,19 @@ public enum ContentDetector {
             "^enum\\s+",             // enum declarations
             "^let\\s+.*=\\s*",       // let bindings
             "^var\\s+.*=\\s*",       // var bindings
+            "^const\\s+",            // const bindings
+            "^await\\s+",            // await expressions
+            "^async\\s+",            // async functions
+            "^export\\s+",           // module exports
             "^return\\s+",           // return statements
-            "^if\\s+.*\\{",          // if statements with braces
-            "^for\\s+.*\\{",         // for loops with braces
-            "^while\\s+.*\\{",       // while loops with braces
+            "^if\\s*\\(|^if\\s+.*\\{", // if statements
+            "^for\\s*\\(|^for\\s+.*\\{", // for loops
+            "^while\\s*\\(|^while\\s+.*\\{", // while loops
             "^switch\\s+",           // switch statements
             "^case\\s+",             // case statements
             "^=>\\s*",               // arrow functions
+            "=>",                    // arrow functions (anywhere)
+            "^\\w+\\.\\w+\\s*=",     // member assignment (e.g. obj.prop =)
             "^\\{\\s*$",             // opening brace
             "^\\}\\s*$",             // closing brace
             "^\\s*//.*$",            // single line comments

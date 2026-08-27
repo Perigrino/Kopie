@@ -26,17 +26,37 @@ struct DetailsPanel: View {
         guard let text = item.text else { return .plainText }
         return ContentDetector.detectContentType(text)
     }
+
+    /// Renders the body of the "Formatted" tab. Code always renders as the
+    /// dark editor card; rich text renders as attributed text; anything else
+    /// gets a friendly empty state.
+    @ViewBuilder private func formattedBody(richData: Data?, hasRich: Bool, isHTML: Bool, isCode: Bool) -> some View {
+        if isCode, case .code(let language) = contentType {
+            CodeBlockView(code: item.text ?? "", language: language)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if hasRich, let data = richData {
+            RichTextRepresentation(data: data, isHTML: isHTML)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            EmptyStateView(symbol: "textformat", title: "No rich text",
+                           message: "This copied item doesn't have any rich text formatting. Switch to the Plain Text tab to view it as plain text.")
+        }
+    }
     
     @ViewBuilder private var content: some View {
         if item.kind == .text {
             VStack(alignment: .leading, spacing: 8) {
                 // Load rich text data once
-                let rtfData = item.isRichText ? state.richText(for: item) : nil
-                let hasRTF = rtfData != nil
+                let richData = item.isRichText ? state.richText(for: item) : nil
+                let hasRich = richData != nil
                 let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
-                
-                // Toggle between plain text and rich text if RTF data is available
-                if hasRTF {
+                let isCode = { if case .code = contentType { return true } else { return false } }()
+                // Show the Plain/Formatted toggle whenever there is formatting to
+                // show. If a plain item is selected while still in Formatted mode,
+                // keep it visible so the user can switch back.
+                let showTabs = hasRich || isCode || showRichText
+
+                if showTabs {
                     Picker("", selection: $showRichText) {
                         Text("Plain Text").tag(false)
                         Text("Formatted").tag(true)
@@ -44,22 +64,15 @@ struct DetailsPanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                 }
-                
-                ScrollView {
-                    if hasRTF, showRichText, let data = rtfData {
-                        // Render rich text content (RTF or HTML)
-                        RichTextRepresentation(data: data, isHTML: isHTML)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if !showRichText || !hasRTF, case .code(let language) = contentType {
-                        // Render code block with language detection
-                        CodeBlockView(code: item.text ?? "", language: language)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Text(item.text ?? "")
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+
+                if showRichText {
+                    formattedBody(richData: richData, hasRich: hasRich, isHTML: isHTML, isCode: isCode)
+                        .id(item.id) // rebuild when a different item is selected
+                } else {
+                    Text(item.text ?? "")
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         } else if item.kind == .file {

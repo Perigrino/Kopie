@@ -20,17 +20,25 @@ struct RichTextRepresentation: NSViewRepresentable {
         textView.drawsBackground = false
         textView.textContainerInset = NSSize(width: 4, height: 4)
         textView.textContainer?.lineFragmentPadding = 0
-
-        // Let the text view resize vertically to fit all content, and track
-        // the container width so lines wrap correctly.
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
         // Start with a very tall container so all text lays out.
         textView.textContainer?.containerSize = NSSize(
             width: 0, height: CGFloat.greatestFiniteMagnitude)
+        applyData(to: textView)
+        return textView
+    }
 
-        // Parse the rich text data.
+    func updateNSView(_ textView: NSTextView, context: Context) {
+        // The selected item can change while this view stays on screen (same
+        // structural identity), so re-parse when data/logic changes.
+        applyData(to: textView)
+    }
+
+    /// Parses `data` (RTF or HTML) and loads the attributed string, normalizing
+    /// colours so content stays readable in both light and dark appearance.
+    private func applyData(to textView: NSTextView) {
         var attributedString: NSAttributedString?
 
         if isHTML {
@@ -38,7 +46,6 @@ struct RichTextRepresentation: NSViewRepresentable {
         } else {
             attributedString = NSAttributedString(rtf: data, documentAttributes: nil)
         }
-
         // Fallbacks: try the other format if the primary one failed.
         if attributedString == nil && !isHTML {
             attributedString = NSAttributedString(html: data, documentAttributes: nil)
@@ -50,17 +57,13 @@ struct RichTextRepresentation: NSViewRepresentable {
         if let attrStr = attributedString {
             textView.textStorage?.setAttributedString(Self.normalized(attrStr))
         } else if let plainText = String(data: data, encoding: .utf8) {
-            textView.string = plainText
+            textView.textStorage?.setAttributedString(NSAttributedString(string: plainText))
+        } else {
+            textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
         }
 
         // Force layout so sizeThatFits has accurate metrics on the first call.
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
-
-        return textView
-    }
-
-    func updateNSView(_ nsView: NSTextView, context: Context) {
-        // Data is baked in at init; nothing to update.
     }
 
     /// Strips hard-coded colors from copied rich text so it stays readable in
