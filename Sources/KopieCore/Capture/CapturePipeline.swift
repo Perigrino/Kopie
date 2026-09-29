@@ -57,6 +57,7 @@ public final class CapturePipeline {
                                  width: nil, height: nil,
                                  sourceApp: sourceApp, copyCount: 1, lastCopiedAt: nil,
                                  richTextRelPath: nil)
+        var ocrData: Data?   // deferred: recognized after the image is decoded below
         if let data = content.imageData {
             do {
                 let info = try writer.writeImage(data, hashHex: hash)
@@ -65,6 +66,7 @@ public final class CapturePipeline {
                 item.width = info.width
                 item.height = info.height
                 item.fileSize = info.byteSize
+                ocrData = data
             } catch {
                 return .writeError("\(error)")
             }
@@ -83,6 +85,7 @@ public final class CapturePipeline {
                 item.width = info.width
                 item.height = info.height
                 item.fileSize = info.byteSize
+                ocrData = data
             } else {
                 item.fileSize = Self.totalFileSize(paths)
             }
@@ -104,6 +107,13 @@ public final class CapturePipeline {
                     item.richTextRelPath = rtfRel
                 }
             }
+        }
+
+        // On-device OCR for image copies (when enabled): makes screenshots
+        // searchable by the words inside them. Best-effort — recognition
+        // failure never blocks the capture.
+        if config.ocrImages, let data = ocrData {
+            item.ocrText = ImageTextRecognizer.recognizeText(in: data)
         }
 
         let id = store.insert(item)

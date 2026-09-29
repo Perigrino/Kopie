@@ -199,4 +199,22 @@ final class ClipStoreTests: XCTestCase {
         XCTAssertEqual(s.query(.init(textQuery: "shared token", kind: .file)).count, 1)
         XCTAssertEqual(s.query(.init(textQuery: "shared token", kind: .file)).first?.kind, .file)
     }
+
+    func test_updateText_changesTextHashAndSearch() throws {
+        let id = store.insert(item(.text, "hello world"))
+        XCTAssertTrue(store.updateText(id, "goodbye world"))
+        let updated = store.get(id)
+        XCTAssertEqual(updated?.text, "goodbye world")
+        XCTAssertEqual(updated?.contentHash, Hashing.sha256(Data("goodbye world".utf8)))
+        // Search index was rebuilt: old text no longer matches, new text does.
+        var f = QueryFilter(); f.textQuery = "goodbye"
+        XCTAssertEqual(store.query(f).map(\.id), [id])
+        f.textQuery = "hello"
+        XCTAssertTrue(store.query(f).isEmpty)
+    }
+
+    func test_updateText_rejectsNonTextRows() throws {
+        let id = store.insert(item(.image))
+        XCTAssertFalse(store.updateText(id, "nope"))
+    }
 }

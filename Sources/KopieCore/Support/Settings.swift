@@ -37,10 +37,13 @@ public struct CaptureConfig: Sendable {
     public var maxItems: Int
     public var excludedAppIDs: Set<String>
     public var trackSourceApp: Bool
+    /// Run on-device OCR on image copies so screenshots become searchable.
+    public var ocrImages: Bool
 
     public init(paused: Bool = false, saveText: Bool = true, saveImages: Bool = true,
                 saveFiles: Bool = true, ignoreDuplicates: Bool = true, maxItems: Int = 1000,
-                excludedAppIDs: Set<String> = [], trackSourceApp: Bool = true) {
+                excludedAppIDs: Set<String> = [], trackSourceApp: Bool = true,
+                ocrImages: Bool = true) {
         self.paused = paused
         self.saveText = saveText
         self.saveImages = saveImages
@@ -49,6 +52,7 @@ public struct CaptureConfig: Sendable {
         self.maxItems = maxItems
         self.excludedAppIDs = excludedAppIDs
         self.trackSourceApp = trackSourceApp
+        self.ocrImages = ocrImages
     }
     public static let `default` = CaptureConfig()
 }

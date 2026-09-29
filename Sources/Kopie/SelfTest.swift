@@ -71,6 +71,10 @@ enum SelfTest {
             guard let item = store.get(id) else { print("ERR notfound"); return true }
             let dark = args.count > 2 && args[2] == "dark"
             MainActor.assumeIsolated { renderDetailsPanel(item: item, dark: dark) }
+        case "--smoke-render-popover":
+            // Renders PopoverView offscreen and writes a PNG snapshot to /tmp
+            // for visual verification (search field, header, rows).
+            MainActor.assumeIsolated { renderPopover(dark: args.first == "dark") }
         default:
             return false
         }
@@ -88,7 +92,6 @@ enum SelfTest {
         win.styleMask = [.titled]
         if dark { win.appearance = NSAppearance(named: .darkAqua) }
         win.orderFrontRegardless()
-        // Let SwiftUI lay out and render a couple of runloop turns.
         RunLoop.main.run(until: Date().addingTimeInterval(2))
         host.view.layoutSubtreeIfNeeded()
         guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
@@ -99,5 +102,49 @@ enum SelfTest {
             try? png.write(to: URL(fileURLWithPath: out))
             print("WROTE \(out) \(png.count)B")
         }
+        Self.writeWindowCapture(win, name: "kopie-render-\(item.id)\(dark ? "-dark" : "")")
+    }
+
+    /// Captures the window's actual composited pixels. `cacheDisplay` misses
+    /// NSViewRepresentable content (NSTextView embeds render only into the
+    /// window's layer, not through recursive drawRect), so this is what makes
+    /// rich-text views visible in smoke snapshots. Own-window capture needs no
+    /// screen-recording permission.
+    @MainActor
+    private static func writeWindowCapture(_ win: NSWindow, name: String) {
+        let id = CGWindowID(UInt32(max(win.windowNumber, 0)))
+        guard id != kCGNullWindowID else { return }
+        if let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, id, .bestResolution) {
+            let rep = NSBitmapImageRep(cgImage: cg)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                let out = "/tmp/\(name)-win.png"
+                try? png.write(to: URL(fileURLWithPath: out))
+                print("WROTE \(out) \(png.count)B")
+            }
+        }
+    }
+
+    @MainActor
+    private static func renderPopover(dark: Bool = false) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let state = AppState()
+        let host = NSHostingController(rootView: PopoverView().environmentObject(state))
+        let win = NSWindow(contentViewController: host)
+        win.setContentSize(NSSize(width: 440, height: 420))
+        win.styleMask = [.titled]
+        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        host.view.layoutSubtreeIfNeeded()
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let suffix = dark ? "-dark" : ""
+            let out = "/tmp/kopie-render-popover\(suffix).png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-render-popover\(dark ? "-dark" : "")")
     }
 }

@@ -7,6 +7,7 @@ struct SettingsClipboardTab: View {
     @AppStorage(SettingsStore.Keys.saveImages) private var saveImages = true
     @AppStorage(SettingsStore.Keys.saveFiles) private var saveFiles = true
     @AppStorage(SettingsStore.Keys.ignoreDuplicates) private var ignoreDuplicates = true
+    @AppStorage(SettingsStore.Keys.ocrImages) private var ocrImages = true
     @AppStorage(SettingsStore.Keys.maxItems) private var maxItems = 1000
 
     var body: some View {
@@ -18,6 +19,9 @@ struct SettingsClipboardTab: View {
             Toggle("Save images", isOn: $saveImages)
             Toggle("Save copied files", isOn: $saveFiles)
             Toggle("Ignore duplicates", isOn: $ignoreDuplicates)
+            Toggle("Recognize text in images (searchable)", isOn: $ocrImages)
+            Text("Runs entirely on your Mac. Screenshots become findable by the words inside them.")
+                .font(.caption).foregroundStyle(.secondary)
             Stepper(value: $maxItems, in: 10...10000, step: 10) {
                 HStack {
                     Text("Max items stored")

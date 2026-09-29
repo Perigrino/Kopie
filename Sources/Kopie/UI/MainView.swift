@@ -36,6 +36,8 @@ struct MainView: View {
     @State private var searchText = ""
     @State private var sidebarVisible: Bool = false
     @State private var splitPosition: Double = SettingsStore.shared.splitPosition
+    /// Clear-all confirmation, also triggered from the status menu.
+    @State private var showClearAll = false
 
     private var filtered: [ClipboardItem] {
         var f = QueryFilter()
@@ -82,6 +84,17 @@ struct MainView: View {
             }
         }
         .navigationTitle("Kopie")
+        .sheet(isPresented: $showClearAll) {
+            ConfirmDialog(
+                title: "Clear clipboard history?",
+                message: "This will permanently remove all saved clipboard items. This action cannot be undone.",
+                confirmTitle: "Clear All", destructive: true,
+                onConfirm: { state.removeAll(); showClearAll = false },
+                onCancel: { showClearAll = false })
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .kopieRequestClearAll)) { _ in
+            showClearAll = true
+        }
         .onAppear {
             // Load persisted split position
             splitPosition = SettingsStore.shared.splitPosition
@@ -158,8 +171,15 @@ struct MainView: View {
                                        onRemove: { state.remove(item) },
                                        onFavorite: { state.toggleFavorite(item) },
                                        onPin: { state.togglePin(item) },
+                                       onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
                                        copyOnTap: false)
                                 .tag(item.id)
+                                .onDrag {
+                                    if item.kind == .image, let img = state.thumbnail(for: item) {
+                                        return NSItemProvider(object: img)
+                                    }
+                                    return NSItemProvider(object: item.dragPayload as NSString)
+                                }
                         }
                     }
                 }
@@ -183,5 +203,10 @@ struct MainView: View {
 
     private func copy(_ item: ClipboardItem) {
         state.copyBack(item)
+    }
+
+    /// Context-menu action: stages the item without its rich-text flavors.
+    private func copyPlainText(_ item: ClipboardItem) {
+        state.copyBack(item, plainTextOnly: true)
     }
 }

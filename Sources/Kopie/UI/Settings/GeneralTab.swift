@@ -9,6 +9,8 @@ struct SettingsGeneralTab: View {
     /// Mirrors SettingsStore.appearance so the picker reflects live changes
     /// made from the status menu too.
     @State private var appearance: SettingsStore.AppAppearance = SettingsStore.shared.appearance
+    @AppStorage(SettingsStore.Keys.pasteDirect) private var pasteDirect = true
+    @AppStorage(SettingsStore.Keys.pasteAsPlainText) private var pasteAsPlainText = false
 
     var body: some View {
         Form {
@@ -30,6 +32,18 @@ struct SettingsGeneralTab: View {
                 Text("Global shortcut")
                 Spacer()
                 HotKeyRecorder()
+            }
+            Section {
+                Toggle("Paste directly into apps", isOn: $pasteDirect)
+                Text("With the popover open: ⌥↩ or ⌥-click copies an item and immediately pastes it into the app you were in (⌥1–9 quick-select). Needs Accessibility — Kopie will offer to open System Settings the first time.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Toggle("Paste as plain text", isOn: $pasteAsPlainText)
+                Text("Strips rich formatting when copying items back, so target apps receive unstyled text. Hold ⌃ while copying in the popover to do it once without changing this setting.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Direct paste")
             }
             Section {
                 Picker("Ambient background",

@@ -61,13 +61,16 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     public var lastCopiedAt: Date?
     public var isPinned: Bool
     public var pinnedAt: Date?
+    /// Text recognized inside an image copy (on-device OCR), so screenshots
+    /// are searchable by their content. nil when absent or disabled.
+    public var ocrText: String?
 
     public init(id: Int64, kind: ClipKind, createdAt: Date, lastAccessedAt: Date, isFavorite: Bool,
                 contentHash: String, text: String?, imageRelPath: String?, thumbRelPath: String?,
                 fileSize: Int, width: Int?, height: Int?, sourceApp: String? = nil,
                 copyCount: Int = 1, lastCopiedAt: Date? = nil,
                 isPinned: Bool = false, pinnedAt: Date? = nil,
-                richTextRelPath: String? = nil) {
+                richTextRelPath: String? = nil, ocrText: String? = nil) {
         self.id = id
         self.kind = kind
         self.createdAt = createdAt
@@ -86,6 +89,7 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         self.lastCopiedAt = lastCopiedAt
         self.isPinned = isPinned
         self.pinnedAt = pinnedAt
+        self.ocrText = ocrText
     }
 
     public var charCount: Int? { text?.count }
@@ -107,6 +111,17 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         copyCount == 1 ? "1 copy" : "\(copyCount) copies"
     }
     public var isRichText: Bool { richTextRelPath != nil }
+
+    /// Payload for drag & drop out of Kopie: text items drag their text, file
+    /// items their (newline-separated) paths, images their OCR transcript when
+    /// one was recognized.
+    public var dragPayload: String {
+        switch kind {
+        case .text: return text ?? preview
+        case .file: return (filePaths ?? []).joined(separator: "\n")
+        case .image: return ocrText ?? ""
+        }
+    }
     public var preview: String {
         if kind == .file {
             let names = (filePaths ?? []).map { ($0 as NSString).lastPathComponent }

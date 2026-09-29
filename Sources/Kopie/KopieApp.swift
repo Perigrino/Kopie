@@ -1,17 +1,7 @@
-import SwiftUI
-import KopieCore
-
-struct KopieApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
-    }
-}
+import Foundation
 
 /// Cross-cutting actions the popover can trigger (opening windows/settings).
+/// Owned by AppDelegate, which installs the closures when it finishes loading.
 @MainActor
 enum GlobalActions {
     static var openMain: (() -> Void)?

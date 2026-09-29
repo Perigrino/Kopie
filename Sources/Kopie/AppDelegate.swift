@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
+    /// Headless launch probe (--smoke-windows): reports visible windows, then quits.
+    private var smokeProbeTimer: Timer?
 
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -52,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.registerHotKey() }
         }
+        installSmokeProbe()
+
         if state.showOnboarding {
             DispatchQueue.main.async { GlobalActions.openOnboarding?() }
         }
@@ -63,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.showMainWindow()
             }
         }
+
     }
 
 
@@ -152,6 +157,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Kopie", action: #selector(openFromMenu), keyEquivalent: "o")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
         menu.addItem(.separator())
+        let paused = SettingsStore.shared.monitorPaused
+        let pauseItem = menu.addItem(withTitle: paused ? "Resume Monitoring" : "Pause Monitoring",
+                                     action: #selector(toggleMonitoringFromMenu), keyEquivalent: "")
+        pauseItem.image = NSImage(systemSymbolName: paused ? "play.circle" : "pause.circle",
+                                  accessibilityDescription: pauseItem.title)
+        let clearItem = menu.addItem(withTitle: "Clear History…",
+                                     action: #selector(clearHistoryFromMenu), keyEquivalent: "")
+        clearItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: clearItem.title)
+        menu.addItem(.separator())
         let appearanceItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
         let appearanceMenu = NSMenu()
         for mode in SettingsStore.AppAppearance.allCases {
@@ -193,9 +207,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func openSettingsFromMenu() { showSettings() }
     @objc private func quitFromMenu() { NSApp.terminate(nil) }
 
+    @objc private func toggleMonitoringFromMenu() {
+        if SettingsStore.shared.monitorPaused { state.startMonitoring() }
+        else { state.pauseMonitoring() }
+    }
+
+    /// Clear-all uses the same typed-confirmation dialog as Settings → Encryption.
+    @objc private func clearHistoryFromMenu() {
+        showMainWindow()
+        NotificationCenter.default.post(name: .kopieRequestClearAll, object: nil)
+    }
+
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
 
     func popoverDidShow(_ notification: Notification) {}
+
+    // MARK: - Launch probe (--smoke-windows)
+
+    /// Headless probe: reports all visible windows shortly after launch, then
+    /// terminates. Catches stray windows (e.g. the blank Settings window SwiftUI
+    /// used to present at startup from the vestigial scene).
+    private func installSmokeProbe() {
+        guard CommandLine.arguments.contains("--smoke-windows") else { return }
+        state.showOnboarding = false
+        smokeProbeTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reportSmokeProbe() }
+        }
+    }
+
+    private func reportSmokeProbe() {
+        let windows = NSApp.windows
+            .filter { $0.isVisible && !$0.title.isEmpty }
+            .map { "\($0.title)|\(Int($0.frame.width))x\(Int($0.frame.height))" }
+        print("WINDOWS \(windows.isEmpty ? "NONE" : windows.joined(separator: ","))")
+        exit(0)
+    }
 
     func showFromHotKey() { togglePopover() }
 

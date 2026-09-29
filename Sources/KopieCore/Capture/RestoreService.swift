@@ -7,7 +7,9 @@ public final class RestoreService {
     public var onAboutToWrite: (() -> Void)?
     public init() {}
 
-    public func restore(_ item: ClipboardItem, writer: ClipWriter) {
+    /// `plainTextOnly` stages only the `.string` flavor, stripping RTF/HTML
+    /// so target apps receive unstyled text.
+    public func restore(_ item: ClipboardItem, writer: ClipWriter, plainTextOnly: Bool = false) {
         onAboutToWrite?()
         let board = NSPasteboard.general
         board.clearContents()
@@ -15,7 +17,7 @@ public final class RestoreService {
         case .text:
             board.setString(item.text ?? "", forType: .string)
             // Restore rich text if available
-            if let rtfRel = item.richTextRelPath,
+            if !plainTextOnly, let rtfRel = item.richTextRelPath,
                let rtfData = try? writer.loadRichText(relPath: rtfRel) {
                 board.setData(rtfData, forType: .rtf)
             }

@@ -57,4 +57,27 @@ final class RestoreServiceTests: XCTestCase {
         svc.restore(textItem("x"), writer: DiskClipWriter(baseDir: tmp))
         XCTAssertTrue(fired)
     }
+
+    func richItem(_ w: DiskClipWriter, plainOnly: Bool) -> ClipboardItem {
+        let rtf = Data("{\\rtf1\\ansi Hello \\b Rich \\b0 World}".utf8)
+        let rel = try! w.writeRichText(rtf, hashHex: "rich1")
+        return ClipboardItem(id: 9, kind: .text, createdAt: .now, lastAccessedAt: .now, isFavorite: false,
+                             contentHash: "rich1", text: "Hello Rich World", imageRelPath: nil,
+                             thumbRelPath: nil, fileSize: 0, width: nil, height: nil,
+                             richTextRelPath: rel)
+    }
+
+    func test_restoreRichText_stagesRTFFlavor() throws {
+        let w = DiskClipWriter(baseDir: tmp)
+        RestoreService().restore(richItem(w, plainOnly: false), writer: w)
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "Hello Rich World")
+        XCTAssertNotNil(NSPasteboard.general.data(forType: .rtf))
+    }
+
+    func test_restorePlainTextOnly_stripsRichFlavor() throws {
+        let w = DiskClipWriter(baseDir: tmp)
+        RestoreService().restore(richItem(w, plainOnly: true), writer: w, plainTextOnly: true)
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "Hello Rich World")
+        XCTAssertNil(NSPasteboard.general.data(forType: .rtf))
+    }
 }

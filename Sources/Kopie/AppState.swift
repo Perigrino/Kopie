@@ -209,9 +209,19 @@ final class AppState: ObservableObject {
         if wasRunning { KopieNotifications.paused() }
     }
 
-    func copyBack(_ item: ClipboardItem) {
-        restoreSVC.restore(item, writer: writer)
+    func copyBack(_ item: ClipboardItem, plainTextOnly: Bool = false) {
+        restoreSVC.restore(item, writer: writer, plainTextOnly: plainTextOnly)
         store.bumpAccessed(item.id)
+        refresh()
+    }
+
+    /// Saves an inline edit from the details panel: updates the stored text,
+    /// re-derives the content hash (so re-copying dedupes) and the encrypted
+    /// search index, then refreshes the UI.
+    func updateText(_ item: ClipboardItem, to newText: String) {
+        guard item.kind == .text,
+              !newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard store.updateText(item.id, newText) else { return }
         refresh()
     }
     func toggleFavorite(_ item: ClipboardItem) { store.setFavorite(item.id, !item.isFavorite); refresh() }

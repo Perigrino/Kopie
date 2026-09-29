@@ -8,6 +8,8 @@ struct ContextMenuBuilder: View {
     var onRemove: () -> Void
     var onFavorite: () -> Void
     var onPin: () -> Void
+    /// Copies the item staging only the plain-text flavor (strips RTF/HTML).
+    var onCopyPlainText: (() -> Void)? = nil
     
     var body: some View {
         // Primary actions
@@ -15,9 +17,15 @@ struct ContextMenuBuilder: View {
             Label("Copy", systemImage: "doc.on.doc")
         }
         .keyboardShortcut("c", modifiers: .command)
-        
+
+        if let onCopyPlainText, item.kind == .text, item.isRichText {
+            Button(action: onCopyPlainText) {
+                Label("Copy as Plain Text", systemImage: "text.format")
+            }
+        }
+
         Divider()
-        
+
         // Pin/Unpin
         Button(action: onPin) {
             Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.fill" : "pin")

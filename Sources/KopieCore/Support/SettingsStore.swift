@@ -33,6 +33,9 @@ public final class SettingsStore: @unchecked Sendable {
         public static let hotkey = "hotkey"
         public static let ambientSpeed = "ambientSpeed"
         public static let trackSourceApp = "trackSourceApp"
+        public static let ocrImages = "ocrImages"
+        public static let pasteDirect = "pasteDirect"
+        public static let pasteAsPlainText = "pasteAsPlainText"
         public static let splitPosition = "splitPosition"
     }
 
@@ -130,7 +133,7 @@ public final class SettingsStore: @unchecked Sendable {
         let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.saveFiles,
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
                         Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
-                        Keys.trackSourceApp]
+                        Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -294,6 +297,26 @@ public final class SettingsStore: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Keys.trackSourceApp) }
     }
 
+    /// On-device OCR of image copies so screenshots become searchable by their text.
+    public var ocrImages: Bool {
+        get { defaults.object(forKey: Keys.ocrImages) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.ocrImages) }
+    }
+
+    /// Enables ⌥↩ / ⌥-click / ⌥1-9 direct paste into the frontmost app
+    /// (simulated ⌘V via the Accessibility permission).
+    public var pasteDirect: Bool {
+        get { defaults.object(forKey: Keys.pasteDirect) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.pasteDirect) }
+    }
+
+    /// When true, copying an item back stages only the plain-text flavor,
+    /// stripping rich text (RTF/HTML) so target apps receive unstyled text.
+    public var pasteAsPlainText: Bool {
+        get { defaults.object(forKey: Keys.pasteAsPlainText) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Keys.pasteAsPlainText) }
+    }
+
     /// Stores the horizontal split position (0…1) of the main view's list/detail divider.
     public var splitPosition: Double {
         get { let v = defaults.double(forKey: Keys.splitPosition); return v > 0 ? v : 0.4 }
@@ -310,6 +333,7 @@ public final class SettingsStore: @unchecked Sendable {
             ignoreDuplicates: ignoreDuplicates,
             maxItems: maxItems,
             excludedAppIDs: excludedAppIDs,
-            trackSourceApp: trackSourceApp)
+            trackSourceApp: trackSourceApp,
+            ocrImages: ocrImages)
     }
 }

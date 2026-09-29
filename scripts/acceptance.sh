@@ -64,4 +64,13 @@ with_timeout 30 $K --smoke-purge 0 >/dev/null
 n=$(with_timeout 30 $K --smoke-count | awk '{print $2}')
 pass "purge ran (remaining=$n)"
 
+# 7. launch hygiene: only the status item (and nothing else) may be visible at
+#    startup. Guards against the blank "Kopie Settings" window a vestigial
+#    SwiftUI Settings scene once presented on every launch.
+out=$(with_timeout 30 $K --smoke-windows)
+case "$out" in
+  "WINDOWS Item-0"*|"WINDOWS NONE") pass "no stray windows at launch" ;;
+  *) fail "no stray windows at launch ($out)" ;;
+esac
+
 echo "ALL CHECKS PASSED"

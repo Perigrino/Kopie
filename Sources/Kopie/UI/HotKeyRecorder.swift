@@ -125,4 +125,6 @@ extension Notification.Name {
     static let kopieHotKeyChanged = Notification.Name("kopieHotKeyChanged")
     /// Posted after the appearance setting changes so live windows re-apply it.
     static let kopieAppearanceChanged = Notification.Name("kopieAppearanceChanged")
+    /// Posted when the status menu asks the main window to show Clear-All confirmation.
+    static let kopieRequestClearAll = Notification.Name("kopieRequestClearAll")
 }

@@ -29,7 +29,8 @@ public final class ClipStore {
       last_copied_at INTEGER,
       is_pinned INTEGER NOT NULL DEFAULT 0,
       pinned_at INTEGER,
-      rich_text_rel_path TEXT);
+      rich_text_rel_path TEXT,
+      ocr_text TEXT);
     CREATE INDEX IF NOT EXISTS idx_ci_created ON clipboard_items(created_at);
     CREATE INDEX IF NOT EXISTS idx_ci_kind ON clipboard_items(kind);
     CREATE INDEX IF NOT EXISTS idx_ci_hash ON clipboard_items(content_hash);
@@ -108,6 +109,9 @@ public final class ClipStore {
         if !existingColumns.contains("rich_text_rel_path") {
             _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN rich_text_rel_path TEXT", [])
         }
+        if !existingColumns.contains("ocr_text") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN ocr_text TEXT", [])
+        }
     }
 
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
@@ -156,6 +160,19 @@ public final class ClipStore {
         }
     }
 
+    /// Search tokens for an item: its text plus any OCR text recognized
+    /// inside an image, so screenshots are findable by their content.
+    private func searchTokens(for item: ClipboardItem) -> [Data] {
+        var sources: [String] = []
+        if let text = item.text { sources.append(text) }
+        if let ocr = item.ocrText { sources.append(ocr) }
+        var all: Set<Data> = []
+        for s in sources {
+            if let tokens = crypto?.searchTokens(for: s) { all.formUnion(tokens) }
+        }
+        return Array(all)
+    }
+
     /// Inserts the token set for one item as a single batched statement.
     private func indexTokens(_ tokens: [Data], for id: Int64) {
         guard !tokens.isEmpty else { return }
@@ -174,14 +191,15 @@ public final class ClipStore {
     public func insert(_ item: ClipboardItem) -> Int64 {
         do {
             _ = try db.run(
-        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
          item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
          item.width.flatMap(Int64.init), item.height.flatMap(Int64.init),
          item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms),
-         item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath])
+         item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath, item.ocrText])
             let id = db.scalarInt64("SELECT last_insert_rowid()")
-            if let text = item.text, let tokens = crypto?.searchTokens(for: text), !tokens.isEmpty {
+            let tokens = searchTokens(for: item)
+            if !tokens.isEmpty {
                 indexTokens(tokens, for: id)
             }
             return id
@@ -192,7 +210,7 @@ public final class ClipStore {
     }
 
     private static let cols =
-        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path"
+        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text"
 
     private func map(_ r: [Any?]) -> ClipboardItem {
         ClipboardItem(
@@ -213,7 +231,8 @@ public final class ClipStore {
             lastCopiedAt: (r[14] as? Int64).map(date),
             isPinned: (r[15] as? Int64 ?? 0) != 0,
             pinnedAt: (r[16] as? Int64).map(date),
-            richTextRelPath: r[17] as? String)
+            richTextRelPath: r[17] as? String,
+            ocrText: r[18] as? String)
     }
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
@@ -306,7 +325,12 @@ public final class ClipStore {
                 return regex.firstMatch(in: text, options: [], range: range) != nil
             }
         }
-        return items.filter { ($0.text ?? "").localizedCaseInsensitiveContains(query) }
+        return items.filter { item in
+            if (item.text ?? "").localizedCaseInsensitiveContains(query) { return true }
+            // Image items match by the words recognized inside them (OCR).
+            if let ocr = item.ocrText, ocr.localizedCaseInsensitiveContains(query) { return true }
+            return false
+        }
     }
 
     public func get(_ id: Int64) -> ClipboardItem? {
@@ -339,6 +363,25 @@ public final class ClipStore {
     public func setPinned(_ id: Int64, _ flag: Bool) {
         _ = try? db.run("UPDATE clipboard_items SET is_pinned = ?, pinned_at = ? WHERE id = ?",
                         [flag ? 1 : 0, flag ? ms(.now) : nil, id])
+    }
+
+    /// Replaces the text of a text item and refreshes everything derived from
+    /// it: the content hash (so re-copying the edited text dedupes against this
+    /// row), the byte size, and the encrypted search-index tokens. Returns
+    /// false when the row is missing or not a text item.
+    @discardableResult
+    public func updateText(_ id: Int64, _ newText: String) -> Bool {
+        guard let item = get(id), item.kind == .text else { return false }
+        let newHash = Hashing.sha256(Data(newText.utf8))
+        guard (try? db.run(
+            "UPDATE clipboard_items SET text_content = ?, content_hash = ?, file_size = ? WHERE id = ?",
+            [storedText(newText), newHash, Int64(newText.utf8.count), id])) != nil else { return false }
+        // Rebuild the search index for this row from the new text.
+        _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
+        if let tokens = crypto?.searchTokens(for: newText), !tokens.isEmpty {
+            indexTokens(tokens, for: id)
+        }
+        return true
     }
     public func bumpAccessed(_ id: Int64, _ now: Date = .now) {
         _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])

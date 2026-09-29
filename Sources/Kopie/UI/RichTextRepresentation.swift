@@ -1,69 +1,78 @@
 import SwiftUI
 import AppKit
 
-/// A view that renders rich text (RTF or HTML) data as formatted text.
-/// Designed to work inside SwiftUI `ScrollView` — does NOT embed its own
-/// `NSScrollView`, which would cause nested-scrolling and zero-height issues.
-struct RichTextRepresentation: NSViewRepresentable {
-    let data: Data
-    let isHTML: Bool
+/// Renders rich text (RTF or HTML) as formatted text using native SwiftUI
+/// `Text`, which paints correctly everywhere — including inside SwiftUI
+/// `ScrollView`s, where an `NSTextView`-backed `NSViewRepresentable` fails to
+/// lay out and renders blank (the cause of rich items appearing empty on the
+/// Formatted tab).
+///
+/// Parsing happens up front in `resolve(data:isHTML:fallbackText:)` so callers
+/// know whether the rich formatting could actually be displayed.
+struct RichTextRepresentation: View {
+    let attributed: NSAttributedString
 
-    init(data: Data, isHTML: Bool = false) {
-        self.data = data
-        self.isHTML = isHTML
+    init(attributed: NSAttributedString) {
+        self.attributed = attributed
     }
 
-    func makeNSView(context: Context) -> NSTextView {
-        let textView = NSTextView()
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 4, height: 4)
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        // Start with a very tall container so all text lays out.
-        textView.textContainer?.containerSize = NSSize(
-            width: 0, height: CGFloat.greatestFiniteMagnitude)
-        applyData(to: textView)
-        return textView
+    /// Outcome of resolving stored rich-text data for display.
+    struct Resolved {
+        let text: NSAttributedString
+        /// True when the rich formatting (RTF/HTML) could not be parsed and a
+        /// plain-text fallback is shown instead.
+        let usedFallback: Bool
     }
 
-    func updateNSView(_ textView: NSTextView, context: Context) {
-        // The selected item can change while this view stays on screen (same
-        // structural identity), so re-parse when data/logic changes.
-        applyData(to: textView)
-    }
-
-    /// Parses `data` (RTF or HTML) and loads the attributed string, normalizing
-    /// colours so content stays readable in both light and dark appearance.
-    private func applyData(to textView: NSTextView) {
-        var attributedString: NSAttributedString?
-
+    /// Parses RTF/HTML clipboard data into an attributed string that is always
+    /// safe to display (never empty when the item has text). Fallback chain:
+    /// primary format → other format → the item's plain text → UTF-8 decode of
+    /// the data. A parse that succeeds but yields only whitespace (some HTML
+    /// payloads style-parse to nothing) counts as a failure.
+    static func resolve(data: Data, isHTML: Bool, fallbackText: String?) -> Resolved {
+        var attributed: NSAttributedString?
         if isHTML {
-            attributedString = NSAttributedString(html: data, documentAttributes: nil)
+            attributed = NSAttributedString(html: data, documentAttributes: nil)
         } else {
-            attributedString = NSAttributedString(rtf: data, documentAttributes: nil)
+            attributed = NSAttributedString(rtf: data, documentAttributes: nil)
         }
-        // Fallbacks: try the other format if the primary one failed.
-        if attributedString == nil && !isHTML {
-            attributedString = NSAttributedString(html: data, documentAttributes: nil)
+        // Try the other format if the primary one failed.
+        if attributed == nil && !isHTML {
+            attributed = NSAttributedString(html: data, documentAttributes: nil)
         }
-        if attributedString == nil && isHTML {
-            attributedString = NSAttributedString(rtf: data, documentAttributes: nil)
+        if attributed == nil && isHTML {
+            attributed = NSAttributedString(rtf: data, documentAttributes: nil)
         }
 
-        if let attrStr = attributedString {
-            textView.textStorage?.setAttributedString(Self.normalized(attrStr))
-        } else if let plainText = String(data: data, encoding: .utf8) {
-            textView.textStorage?.setAttributedString(NSAttributedString(string: plainText))
-        } else {
-            textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
+        func isBlank(_ s: NSAttributedString?) -> Bool {
+            guard let s else { return true }
+            return s.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
-        // Force layout so sizeThatFits has accurate metrics on the first call.
-        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        if let rich = attributed, !isBlank(rich) {
+            return Resolved(text: normalized(rich), usedFallback: false)
+        }
+
+        // Rich formatting could not be displayed — fall back to plain text so
+        // the Formatted tab is never blank.
+        if let plain = fallbackText?.trimmingCharacters(in: .whitespacesAndNewlines), !plain.isEmpty {
+            return Resolved(text: NSAttributedString(string: fallbackText!), usedFallback: true)
+        }
+        if let decoded = String(data: data, encoding: .utf8),
+           !decoded.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return Resolved(text: NSAttributedString(string: decoded), usedFallback: true)
+        }
+        // Truly nothing renderable (empty copy) — keep whatever we parsed.
+        return Resolved(text: attributed ?? NSAttributedString(string: ""), usedFallback: true)
+    }
+
+    var body: some View {
+        // AppKit-scoped attributes (fonts, colors, underline, links) are
+        // understood by SwiftUI Text on macOS.
+        Text(AttributedString(attributed))
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
     }
 
     /// Strips hard-coded colors from copied rich text so it stays readable in
@@ -84,21 +93,5 @@ struct RichTextRepresentation: NSViewRepresentable {
             }
         }
         return m
-    }
-
-    func sizeThatFits(_ proposedSize: ProposedViewSize,
-                      nsView: NSTextView,
-                      context: Context) -> CGSize {
-        let width = proposedSize.width ?? 300
-        guard let lm = nsView.layoutManager, let tc = nsView.textContainer else {
-            return CGSize(width: width, height: 44)
-        }
-        // Match the text container width to the proposed width (minus insets).
-        tc.size = NSSize(width: width - nsView.textContainerInset.width * 2,
-                         height: CGFloat.greatestFiniteMagnitude)
-        lm.ensureLayout(for: tc)
-        let usedHeight = lm.usedRect(for: tc).height
-        let totalHeight = usedHeight + nsView.textContainerInset.height * 2
-        return CGSize(width: width, height: max(totalHeight, 44))
     }
 }
