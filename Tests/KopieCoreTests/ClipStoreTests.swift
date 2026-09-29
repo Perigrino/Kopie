@@ -44,7 +44,7 @@ final class ClipStoreTests: XCTestCase {
         XCTAssertEqual(store.get(a)?.isFavorite, true)
         store.delete([b])
         XCTAssertEqual(store.count(), 1)
-        XCTAssertEqual(store.clearAll(), 1)
+        XCTAssertTrue(store.clearAll().isEmpty)   // text-only rows: no content files to report
         XCTAssertEqual(store.count(), 0)
     }
     func test_bumpAccessed() throws {
@@ -58,9 +58,28 @@ final class ClipStoreTests: XCTestCase {
         let old = store.insert(item(.text, "old", 8 * 86400))
         let cutoff = Date.now.addingTimeInterval(-7 * 86400)
         let removed = store.purgeOlder(olderThan: cutoff, deleteFavorites: false)
-        XCTAssertEqual(removed, 1)
+        XCTAssertEqual(removed.deleted, 1)
         XCTAssertNotNil(store.get(recent)); XCTAssertNotNil(store.get(oldFav)); XCTAssertNil(store.get(old))
     }
+    func test_deleteReturnsUnreferencedFilePaths() throws {
+        var img = item(.image)
+        img.imageRelPath = "images/aaa.png"
+        img.thumbRelPath = "thumbs/aaa.png"
+        var shared = item(.image)
+        shared.imageRelPath = "images/shared.png"
+        var keeper = item(.text, "keep")
+        keeper.imageRelPath = "images/shared.png"   // survives, keeps the shared file
+        _ = store.insert(img)
+        _ = store.insert(shared)
+        let k = store.insert(keeper)
+        let orphaned = store.delete([1, 2])
+        XCTAssertEqual(Set(orphaned), ["images/aaa.png", "thumbs/aaa.png"])
+        XCTAssertNotNil(store.get(k))   // shared.png still referenced by the survivor
+        // clearAll returns every path still referenced by surviving rows
+        // (here only the keeper, which holds the shared file).
+        XCTAssertEqual(Set(store.clearAll()), ["images/shared.png"])
+    }
+
     func test_trimToMaxKeepsFavoritesAndNewest() throws {
         let ids = (0..<6).map { store.insert(item(.text, "item\($0)", Double(6 - $0))) }
         store.setFavorite(ids[0], true)

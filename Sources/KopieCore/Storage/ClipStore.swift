@@ -343,16 +343,55 @@ public final class ClipStore {
     public func bumpAccessed(_ id: Int64, _ now: Date = .now) {
         _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
     }
-    public func delete(_ ids: [Int64]) {
+    /// Deletes the given items and returns the relative paths of their content
+    /// files (image, thumbnail, rich text) that are no longer referenced by any
+    /// surviving row. Files are hash-named and can be shared between rows, so a
+    /// path is only reported when every reference to it is going away.
+    @discardableResult
+    public func delete(_ ids: [Int64]) -> [String] {
+        guard !ids.isEmpty else { return [] }
+        let placeholder = ids.map { _ in "?" }.joined(separator: ",")
+        let params: [Any?] = ids.map { $0 as Any? }
+        var paths = Set<String>()
+        if let rows = try? db.rows("SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items WHERE id IN (\(placeholder))", params) {
+            for r in rows {
+                for i in 0..<3 {
+                    if let p = r[i] as? String { paths.insert(p) }
+                }
+            }
+        }
         for id in ids {
             _ = try? db.run("DELETE FROM clipboard_items WHERE id = ?", [id])
             _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
         }
+        // Drop paths still referenced by surviving rows (a re-copy bumps an
+        // existing row, but a re-captured hash re-inserts and shares the file).
+        paths.subtract(stillReferencedPaths())
+        return Array(paths)
     }
+
+    /// Relative paths referenced by at least one surviving row.
+    private func stillReferencedPaths() -> Set<String> {
+        var out = Set<String>()
+        if let rows = try? db.rows(
+            "SELECT image_rel_path FROM clipboard_items WHERE image_rel_path IS NOT NULL " +
+            "UNION SELECT thumb_rel_path FROM clipboard_items WHERE thumb_rel_path IS NOT NULL " +
+            "UNION SELECT rich_text_rel_path FROM clipboard_items WHERE rich_text_rel_path IS NOT NULL", []) {
+            for r in rows {
+                if let p = r[0] as? String { out.insert(p) }
+            }
+        }
+        return out
+    }
+
+    /// Returns the relative paths referenced by ALL rows (used by clearAll),
+    /// then clears the table.
     @discardableResult
-    public func clearAll() -> Int64 {
+    public func clearAll() -> [String] {
+        let paths = stillReferencedPaths()
         _ = try? db.run("DELETE FROM search_index", [])
-        return (try? db.run("DELETE FROM clipboard_items", [])) ?? 0
+        _ = try? db.run("DELETE FROM clipboard_items", [])
+        return Array(paths)
     }
     public func count() -> Int64 { db.scalarInt64("SELECT COUNT(*) FROM clipboard_items") }
 
@@ -371,11 +410,35 @@ public final class ClipStore {
         return total
     }
 
-    public func purgeOlder(olderThan cutoff: Date, deleteFavorites: Bool) -> Int64 {
+    /// Result of a retention purge: how many rows went away plus the relative
+    /// paths of content files that are no longer referenced by any survivor.
+    public struct PurgeResult: Sendable, Equatable {
+        public let deleted: Int64
+        public let orphanedPaths: [String]
+        public init(deleted: Int64, orphanedPaths: [String]) {
+            self.deleted = deleted
+            self.orphanedPaths = orphanedPaths
+        }
+    }
+
+    /// Purges stale items, returning the deleted row count plus the relative
+    /// paths of content files that are no longer referenced by any surviving row.
+    public func purgeOlder(olderThan cutoff: Date, deleteFavorites: Bool) -> PurgeResult {
+        // Collect file paths of rows about to be purged, before they're gone.
         let cond = (deleteFavorites ? "" : "AND is_favorite = 0") + " AND is_pinned = 0"
+        var stalePaths = Set<String>()
+        if let rows = try? db.rows("SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)]) {
+            for r in rows {
+                for i in 0..<3 {
+                    if let p = r[i] as? String { stalePaths.insert(p) }
+                }
+            }
+        }
         let n = (try? db.run("DELETE FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)])) ?? 0
         sweepOrphanIndex()
-        return n
+        guard n > 0 else { return PurgeResult(deleted: 0, orphanedPaths: []) }
+        stalePaths.subtract(stillReferencedPaths())
+        return PurgeResult(deleted: n, orphanedPaths: Array(stalePaths))
     }
 
     public func trimToMax(_ max: Int) {

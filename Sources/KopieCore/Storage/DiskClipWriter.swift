@@ -144,4 +144,15 @@ public final class DiskClipWriter: ClipWriter {
     public func fileSize(relPath: String) -> Int {
         (try? Data(contentsOf: absPath(relPath)))?.count ?? 0
     }
+
+    /// Deletes stored content files by relative path. Ignored paths that are
+    /// nil, empty, contain ".." (path traversal guard), or are absolute — only
+    /// relative paths under the storage base are removed.
+    public func removeFiles(relPaths: [String]) {
+        let fm = FileManager.default
+        for rel in relPaths {
+            guard !rel.isEmpty, !rel.hasPrefix("/"), !rel.contains("..") else { continue }
+            try? fm.removeItem(at: absPath(rel))
+        }
+    }
 }

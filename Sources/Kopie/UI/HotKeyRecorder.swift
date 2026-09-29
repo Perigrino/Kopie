@@ -121,4 +121,8 @@ struct HotKeyRecorder: View {
     }
 }
 
-extension Notification.Name { static let kopieHotKeyChanged = Notification.Name("kopieHotKeyChanged") }
+extension Notification.Name {
+    static let kopieHotKeyChanged = Notification.Name("kopieHotKeyChanged")
+    /// Posted after the appearance setting changes so live windows re-apply it.
+    static let kopieAppearanceChanged = Notification.Name("kopieAppearanceChanged")
+}

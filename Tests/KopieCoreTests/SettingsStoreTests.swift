@@ -33,11 +33,11 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(s.retentionPeriod, .daySeven)
         XCTAssertEqual(s.autoDeleteFavorites, false)
         XCTAssertEqual(s.showMenuBarIcon, true)
-        XCTAssertEqual(s.startMonitoring, true)
         XCTAssertEqual(s.hasSeenOnboarding, false)
         XCTAssertEqual(s.monitorPaused, false)
         XCTAssertEqual(s.excludedApps, [])
         XCTAssertEqual(s.hotkey, .default)
+        XCTAssertEqual(s.appearance, .system)
     }
 
     // MARK: - Round trip
@@ -59,6 +59,21 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(s2.showMenuBarIcon, false)
         XCTAssertEqual(s2.hotkey, HotKeySpec(keyCode: 12, modifiers: 0x0100))
         XCTAssertEqual(s2.excludedApps, [.init(id: "com.example.app", name: "Example")])
+    }
+
+    func test_appearanceRoundTripAndHealing() {
+        let s = store()
+        XCTAssertEqual(s.appearance, .system)   // default: follow the system
+        s.appearance = .dark
+        XCTAssertEqual(store().appearance, .dark)
+        s.appearance = .light
+        XCTAssertEqual(store().appearance, .light)
+        s.appearance = .system
+        XCTAssertEqual(store().appearance, .system)
+        // Garbage raw value heals back to the default.
+        defaults.set("neon", forKey: SettingsStore.Keys.appearance)
+        XCTAssertEqual(store().appearance, .system)
+        XCTAssertNil(defaults.object(forKey: SettingsStore.Keys.appearance))
     }
 
     // MARK: - Migration

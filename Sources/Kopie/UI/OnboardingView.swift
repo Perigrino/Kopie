@@ -58,7 +58,12 @@ struct OnboardingView: View {
                 default: finalStep
                 }
             }
+            .id(step) // treat each step as a distinct identity so the transition runs
+            .transition(reduceMotion ? .opacity
+                        : .asymmetric(insertion: .opacity.combined(with: .offset(x: 24)),
+                                      removal: .opacity.combined(with: .offset(x: -24))))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.22), value: step)
 
             Divider()
             HStack {

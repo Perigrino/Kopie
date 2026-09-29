@@ -5,9 +5,6 @@ struct SettingsStorageTab: View {
     @State private var showClearCacheConfirm = false
     @State private var showClearAllConfirm = false
     @State private var stats: (count: Int64, bytes: Int64) = (0, 0)
-    @State private var showExportAlert = false
-    @State private var showImportAlert = false
-    @State private var alertMessage = ""
 
     var body: some View {
         ScrollView {

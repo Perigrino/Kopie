@@ -13,9 +13,14 @@ public final class RetentionJob {
     private let store: ClipStore
     public init(store: ClipStore) { self.store = store }
 
+    /// Purges stale rows, returning the deleted count and the relative paths of
+    /// content files that are no longer referenced by any surviving row, so the
+    /// caller can remove them from disk.
     @discardableResult
-    public func run(config: RetentionConfig, now: Date = .now) -> Int64 {
-        guard let cutoff = RetentionPolicy.cutoff(for: config.period, now: now) else { return 0 }
+    public func run(config: RetentionConfig, now: Date = .now) -> ClipStore.PurgeResult {
+        guard let cutoff = RetentionPolicy.cutoff(for: config.period, now: now) else {
+            return ClipStore.PurgeResult(deleted: 0, orphanedPaths: [])
+        }
         return store.purgeOlder(olderThan: cutoff, deleteFavorites: config.deleteFavorites)
     }
 }

@@ -1,6 +1,34 @@
 import SwiftUI
 import KopieCore
 
+/// Sidebar history filters.
+enum HistoryFilter: String, CaseIterable, Identifiable {
+    case all, text, images, files, today, favorites, pinned
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all: "All"
+        case .text: "Text"
+        case .images: "Images"
+        case .files: "Files"
+        case .today: "Today"
+        case .favorites: "Favorites"
+        case .pinned: "Pinned"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .all: "tray.full"
+        case .text: "doc.text"
+        case .images: "photo"
+        case .files: "folder"
+        case .today: "clock"
+        case .favorites: "star"
+        case .pinned: "pin"
+        }
+    }
+}
+
 struct MainView: View {
     @EnvironmentObject var state: AppState
     @State private var selection: HistoryFilter? = .all

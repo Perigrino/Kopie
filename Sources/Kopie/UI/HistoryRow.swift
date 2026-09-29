@@ -42,6 +42,7 @@ struct HistoryRow: View {
             Spacer()
             if !selectionMode && hovering {
                 quickButtons
+                    .transition(.opacity)
             }
         }
         .padding(8)
@@ -199,11 +200,28 @@ struct HistoryRow: View {
         HStack(spacing: 8) {
             Button(action: onPin) {
                 Image(systemName: item.isPinned ? "pin.fill" : "pin")
-            }.buttonStyle(.plain).foregroundStyle(item.isPinned ? .blue : .secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(item.isPinned ? .blue : .secondary)
+            .help(item.isPinned ? "Unpin" : "Pin")
             Button(action: onFavorite) {
                 Image(systemName: item.isFavorite ? "star.fill" : "star")
-            }.buttonStyle(.plain).foregroundStyle(item.isFavorite ? .yellow : .secondary)
-            Button(action: onRemove) { Image(systemName: "trash") }.buttonStyle(.plain).foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(item.isFavorite ? .yellow : .secondary)
+            .help(item.isFavorite ? "Remove from favorites" : "Add to favorites")
+            Button(action: onRemove) {
+                Image(systemName: "trash")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Delete")
         }
     }
 

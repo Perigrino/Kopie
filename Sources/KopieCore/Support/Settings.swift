@@ -25,10 +25,6 @@ public enum RetentionPeriod: Int, CaseIterable, Codable, Comparable, Sendable {
     }
 
     public static func < (l: Self, r: Self) -> Bool { l.rawValue < r.rawValue }
-
-    // Convenient aliases
-    public static var day7: RetentionPeriod { .daySeven }
-    public static var ninetyDays: RetentionPeriod { .dayNinety }
 }
 
 /// Snapshot of capture-time settings consumed by the pipeline.

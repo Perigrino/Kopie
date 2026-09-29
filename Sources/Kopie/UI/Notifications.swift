@@ -8,6 +8,9 @@ enum KopieNotifications {
     static func show(title: String, message: String) { deliver(title: title, body: message) }
 
     private static func deliver(title: String, body: String) {
+        // Headless/bare-binary runs have no bundle; UNUserNotificationCenter
+        // would throw. Notifications only matter in the real app.
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in
             let content = UNMutableNotificationContent()

@@ -4,8 +4,8 @@ import KopieCore
 final class ModelsTests: XCTestCase {
     func test_retentionDays() {
         XCTAssertNil(RetentionPeriod.never.days)
-        XCTAssertEqual(RetentionPeriod.day7.days, 7)
-        XCTAssertEqual(RetentionPeriod.ninetyDays.days, 90)
+        XCTAssertEqual(RetentionPeriod.daySeven.days, 7)
+        XCTAssertEqual(RetentionPeriod.dayNinety.days, 90)
     }
     func test_retentionLabel() {
         XCTAssertEqual(RetentionPeriod.never.label, "Never")

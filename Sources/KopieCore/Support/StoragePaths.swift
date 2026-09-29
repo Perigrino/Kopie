@@ -11,6 +11,7 @@ public enum StoragePaths {
     public static func dbURL() -> URL { baseDir().appendingPathComponent("kopie.db") }
     public static func imagesDir() -> URL { baseDir().appendingPathComponent("images", isDirectory: true) }
     public static func thumbsDir() -> URL { baseDir().appendingPathComponent("thumbs", isDirectory: true) }
+    public static func rtfDir() -> URL { baseDir().appendingPathComponent("rtf", isDirectory: true) }
     public static func makeDirs() throws {
         try FileManager.default.createDirectory(at: baseDir(), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: imagesDir(), withIntermediateDirectories: true)

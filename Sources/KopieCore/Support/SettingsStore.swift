@@ -28,7 +28,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let autoDeleteFavorites = "autoDeleteFavorites"
         public static let launchAtLogin = "launchAtLogin"
         public static let showMenuBarIcon = "showMenuBarIcon"
-        public static let startMonitoring = "startMonitoring"
+        public static let appearance = "appearance"
         public static let hasSeenOnboarding = "hasSeenOnboarding"
         public static let hotkey = "hotkey"
         public static let ambientSpeed = "ambientSpeed"
@@ -52,6 +52,27 @@ public final class SettingsStore: @unchecked Sendable {
     /// Ambient landing animation speed. All ambient motion (background breath,
     /// orb drift and scale, twinkles, particles) shares one cycle; `off` makes
     /// the whole scene static while keeping the pastel gradient.
+    /// App-wide appearance: follow the system, or force light/dark.
+    public enum AppAppearance: String, CaseIterable, Codable, Identifiable, Sendable {
+        case system, light, dark
+        public var id: String { rawValue }
+        public var label: String {
+            switch self {
+            case .system: "System"
+            case .light: "Light"
+            case .dark: "Dark"
+            }
+        }
+        /// SF Symbol for menu items / buttons.
+        public var symbol: String {
+            switch self {
+            case .system: "circle.lefthalf.filled"
+            case .light: "sun.max"
+            case .dark: "moon"
+            }
+        }
+    }
+
     public enum AmbientSpeed: String, CaseIterable, Codable, Identifiable, Sendable {
         case off, slow, medium, fast
 
@@ -108,7 +129,7 @@ public final class SettingsStore: @unchecked Sendable {
     private func healInvalidTypes() {
         let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.saveFiles,
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
-                        Keys.showMenuBarIcon, Keys.startMonitoring, Keys.hasSeenOnboarding,
+                        Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
                         Keys.trackSourceApp]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
@@ -127,6 +148,14 @@ public final class SettingsStore: @unchecked Sendable {
         }
         if let value = defaults.object(forKey: Keys.ambientSpeed), value as? String == nil {
             defaults.removeObject(forKey: Keys.ambientSpeed)
+        }
+        if let value = defaults.object(forKey: Keys.appearance), value as? String == nil {
+            defaults.removeObject(forKey: Keys.appearance)
+        }
+        // Enum raw values that no longer decode are dead data — drop them so
+        // accessors fall back to their default.
+        if let raw = defaults.string(forKey: Keys.appearance), AppAppearance(rawValue: raw) == nil {
+            defaults.removeObject(forKey: Keys.appearance)
         }
         if let value = defaults.object(forKey: Keys.excludedAppIDs), value as? [String] == nil {
             defaults.removeObject(forKey: Keys.excludedAppIDs)
@@ -217,11 +246,6 @@ public final class SettingsStore: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Keys.showMenuBarIcon) }
     }
 
-    public var startMonitoring: Bool {
-        get { defaults.object(forKey: Keys.startMonitoring) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Keys.startMonitoring) }
-    }
-
     public var hasSeenOnboarding: Bool {
         get { defaults.bool(forKey: Keys.hasSeenOnboarding) }
         set { defaults.set(newValue, forKey: Keys.hasSeenOnboarding) }
@@ -236,6 +260,18 @@ public final class SettingsStore: @unchecked Sendable {
             return speed
         }
         set { defaults.set(newValue.rawValue, forKey: Keys.ambientSpeed) }
+    }
+
+    /// App-wide appearance (light/dark/system). Defaults to following the system.
+    public var appearance: AppAppearance {
+        get {
+            guard let raw = defaults.object(forKey: Keys.appearance) as? String,
+                  let mode = AppAppearance(rawValue: raw) else {
+                return .system
+            }
+            return mode
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.appearance) }
     }
 
     public var hotkey: HotKeySpec {

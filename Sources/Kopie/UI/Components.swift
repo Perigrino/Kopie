@@ -14,13 +14,25 @@ struct BreathingBackground: View {
     /// static while still covering the whole background.
     var cycle: Double? = 30
     @State private var breathe = false
+    @Environment(\.colorScheme) private var colorScheme
 
-    private let colors = [
-        Color(red: 0.992, green: 0.984, blue: 1.0),
-        Color(red: 0.965, green: 0.937, blue: 1.0),
-        Color(red: 0.992, green: 0.941, blue: 0.965),
-        Color(red: 0.961, green: 0.973, blue: 1.0)
-    ]
+    /// Pastel gradient base — light in light mode, deep muted pastels in dark
+    /// mode so the landing matches the rest of the app in both appearances.
+    private var colors: [Color] {
+        colorScheme == .dark
+            ? [
+                Color(red: 0.09, green: 0.09, blue: 0.13),
+                Color(red: 0.13, green: 0.10, blue: 0.18),
+                Color(red: 0.14, green: 0.10, blue: 0.15),
+                Color(red: 0.09, green: 0.11, blue: 0.17)
+            ]
+            : [
+                Color(red: 0.992, green: 0.984, blue: 1.0),
+                Color(red: 0.965, green: 0.937, blue: 1.0),
+                Color(red: 0.992, green: 0.941, blue: 0.965),
+                Color(red: 0.961, green: 0.973, blue: 1.0)
+            ]
+    }
 
     var body: some View {
         GeometryReader { geo in

@@ -27,20 +27,20 @@ final class RetentionJobTests: XCTestCase {
     }
     func test_neverDeletesNothing() {
         add("old", 999)
-        XCTAssertEqual(job.run(config: .init(period: .never, deleteFavorites: false), now: .now), 0)
+        XCTAssertEqual(job.run(config: .init(period: .never, deleteFavorites: false), now: .now).deleted, 0)
         XCTAssertEqual(store.count(), 1)
     }
     func test_sevenDayDeletesOldKeepsRecent() {
         add("recent", 1); add("old", 8)
-        XCTAssertEqual(job.run(config: .init(period: .daySeven, deleteFavorites: false), now: .now), 1)
+        XCTAssertEqual(job.run(config: .init(period: .daySeven, deleteFavorites: false), now: .now).deleted, 1)
         XCTAssertEqual(store.count(), 1)
     }
     func test_favoritesProtectedUnlessOptIn() {
         add("favOld", 10, fav: true); add("old", 10)
-        XCTAssertEqual(job.run(config: .init(period: .daySeven, deleteFavorites: false), now: .now), 1)
+        XCTAssertEqual(job.run(config: .init(period: .daySeven, deleteFavorites: false), now: .now).deleted, 1)
         XCTAssertEqual(store.count(), 1)
         add("favOld2", 20, fav: true)
-        XCTAssertEqual(job.run(config: .init(period: .daySeven, deleteFavorites: true), now: .now), 2)
+        XCTAssertEqual(job.run(config: .init(period: .daySeven, deleteFavorites: true), now: .now).deleted, 2)
         XCTAssertEqual(store.count(), 0)
     }
 }

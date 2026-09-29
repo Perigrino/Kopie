@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        applyAppearance()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = AppIcon.menuBarImage()
@@ -43,6 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         applyVisibility()
 
         registerHotKey()
+        // Re-apply the appearance whenever the persisted setting changes (the
+        // Settings picker and the status menu both write through SettingsStore).
+        NotificationCenter.default.addObserver(forName: .kopieAppearanceChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyAppearance() }
+        }
         NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.registerHotKey() }
         }
@@ -146,11 +152,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Kopie", action: #selector(openFromMenu), keyEquivalent: "o")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
         menu.addItem(.separator())
+        let appearanceItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+        let appearanceMenu = NSMenu()
+        for mode in SettingsStore.AppAppearance.allCases {
+            let item = NSMenuItem(title: mode.label, action: #selector(setAppearance(_:)), keyEquivalent: "")
+            item.representedObject = mode.rawValue
+            item.state = mode == SettingsStore.shared.appearance ? .on : .off
+            item.image = NSImage(systemSymbolName: mode.symbol, accessibilityDescription: mode.label)
+            appearanceMenu.addItem(item)
+        }
+        appearanceItem.submenu = appearanceMenu
+        menu.addItem(appearanceItem)
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Kopie", action: #selector(quitFromMenu), keyEquivalent: "q")
         menu.items.forEach { item in
             if item.action != nil { item.target = self }
         }
         return menu
+    }
+
+    /// Persists the chosen appearance and re-applies it to the whole app.
+    @objc private func setAppearance(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = SettingsStore.AppAppearance(rawValue: raw) else { return }
+        SettingsStore.shared.appearance = mode
+        NotificationCenter.default.post(name: .kopieAppearanceChanged, object: nil)
+    }
+
+    /// Applies the persisted appearance to every window, popover and menu.
+    /// `nil` (system mode) removes the override so the app follows macOS.
+    private func applyAppearance() {
+        switch SettingsStore.shared.appearance {
+        case .system: NSApp.appearance = nil
+        case .light:  NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 
     @objc private func openFromMenu() { GlobalActions.openMain?() }

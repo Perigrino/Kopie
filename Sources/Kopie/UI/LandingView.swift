@@ -22,8 +22,12 @@ struct LandingView: View {
 
     private let letters = Array("Kopie")
     private let coral = Color(red: 1.0, green: 0.49, blue: 0.56)
-    private let dark = Color(red: 0.12, green: 0.13, blue: 0.19)
-    private let slate = Color(red: 0.36, green: 0.36, blue: 0.44)
+    /// Hero text colors adapt to the appearance: near-black ink on the pastel
+    /// base in light mode, soft near-white ink on the deep pastel base in dark
+    /// mode (contrast-checked ≥ 4.5:1 against both backgrounds).
+    @Environment(\.colorScheme) private var colorScheme
+    private var titleColor: Color { colorScheme == .dark ? Color(red: 0.94, green: 0.94, blue: 0.97) : Color(red: 0.12, green: 0.13, blue: 0.19) }
+    private var subtitleColor: Color { colorScheme == .dark ? Color(red: 0.72, green: 0.72, blue: 0.80) : Color(red: 0.36, green: 0.36, blue: 0.44) }
 
     var body: some View {
         ZStack {
@@ -172,7 +176,7 @@ struct LandingView: View {
             ForEach(0..<letters.count, id: \.self) { i in
                 Text(String(letters[i]))
                     .font(.system(size: 34, weight: .heavy))
-                    .foregroundStyle(dark)
+                    .foregroundStyle(titleColor)
                     .offset(y: lettersShown[i] ? 0 : 24)
                     .scaleEffect(lettersShown[i] ? 1 : 0.4)
                     .opacity(lettersShown[i] ? 1 : 0)
@@ -183,7 +187,7 @@ struct LandingView: View {
     private var tagline: some View {
         Text("Everything you copy. Always within reach.")
             .font(.system(size: 13.5, weight: .medium))
-            .foregroundStyle(slate)
+            .foregroundStyle(subtitleColor)
             .opacity(taglineShown ? 1 : 0)
             .offset(y: taglineShown ? 0 : 5)
     }

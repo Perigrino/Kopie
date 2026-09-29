@@ -75,6 +75,7 @@ struct DetailsPanel: View {
                     }
                 }
                 .id(item.id) // rebuild when a different item is selected
+                .animation(.easeInOut(duration: 0.18), value: showRichText) // crossfade tabs
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else if item.kind == .file {

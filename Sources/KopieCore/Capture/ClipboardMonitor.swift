@@ -18,7 +18,7 @@ public final class ClipboardMonitor: @unchecked Sendable {
     }
 
     public func start() {
-        stop()
+        guard timer == nil else { return }   // idempotent: already running
         lastCount = NSPasteboard.general.changeCount
         timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
             self?.tick()

@@ -96,6 +96,14 @@ final class AppState: ObservableObject {
         OneTimeCleanup(store: store, writer: writer).run()
         // launch-time catch-up retention
         runRetentionPolicy()
+        // Start monitoring immediately so copies made during onboarding or the
+        // launch splash are captured. Idempotent: finishOnboarding() calls this
+        // again, and startMonitoring() already no-ops when running.
+        if settings.monitorPaused {
+            isPaused = true
+        } else {
+            startMonitoring()
+        }
         // First-ever launch shows the full interactive onboarding;
         // subsequent launches get a brief landing splash that auto-dismisses.
         if settings.hasSeenOnboarding {
@@ -150,26 +158,26 @@ final class AppState: ObservableObject {
     /// Clears regenerable cache (in-memory thumbnails + thumbnail files).
     func clearCache() {
         Self.thumbCache.removeAllObjects()
-        let fm = FileManager.default
-        for dir in [StoragePaths.thumbsDir()] {
-            if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
-                for f in files { try? fm.removeItem(at: f) }
-            }
-        }
+        removeContents(of: StoragePaths.thumbsDir())
         refresh()
     }
 
     /// Removes every clipboard item and all stored image/thumbnail files.
     func clearAllData() {
-        store.clearAll()
+        writer.removeFiles(relPaths: store.clearAll())
         Self.thumbCache.removeAllObjects()
-        let fm = FileManager.default
-        for dir in [StoragePaths.imagesDir(), StoragePaths.thumbsDir()] {
-            if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
-                for f in files { try? fm.removeItem(at: f) }
-            }
-        }
+        removeContents(of: StoragePaths.imagesDir())
+        removeContents(of: StoragePaths.thumbsDir())
+        removeContents(of: StoragePaths.rtfDir())
         refresh()
+    }
+
+    /// Deletes (best-effort) every file directly inside `dir`.
+    private func removeContents(of dir: URL) {
+        let fm = FileManager.default
+        if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+            for f in files { try? fm.removeItem(at: f) }
+        }
     }
 
     func refresh(filter: QueryFilter? = nil) {
@@ -189,12 +197,16 @@ final class AppState: ObservableObject {
     }
 
     func startMonitoring() {
+        let wasPaused = isPaused
         monitor.start(); isPaused = false; settings.monitorPaused = false
-        KopieNotifications.resumed()
+        // Only announce real user-facing pause→resume flips, never launch-time
+        // auto-starts or redundant calls.
+        if wasPaused { KopieNotifications.resumed() }
     }
     func pauseMonitoring() {
+        let wasRunning = !isPaused
         monitor.stop(); isPaused = true; settings.monitorPaused = true
-        KopieNotifications.paused()
+        if wasRunning { KopieNotifications.paused() }
     }
 
     func copyBack(_ item: ClipboardItem) {
@@ -204,16 +216,24 @@ final class AppState: ObservableObject {
     }
     func toggleFavorite(_ item: ClipboardItem) { store.setFavorite(item.id, !item.isFavorite); refresh() }
     func togglePin(_ item: ClipboardItem) { store.setPinned(item.id, !item.isPinned); refresh() }
-    func remove(_ item: ClipboardItem) { store.delete([item.id]); refresh() }
-    func remove(_ ids: [Int64]) { store.delete(ids); refresh() }
+    func remove(_ item: ClipboardItem) { remove([item.id]) }
+    func remove(_ ids: [Int64]) {
+        writer.removeFiles(relPaths: store.delete(ids))
+        refresh()
+    }
     func removeAll() {
-        store.clearAll(); refresh()
+        writer.removeFiles(relPaths: store.clearAll())
+        Self.thumbCache.removeAllObjects()
+        refresh()
         KopieNotifications.cleared()
     }
 
     func runRetentionPolicy() {
-        job.run(config: RetentionConfig(period: settings.retentionPeriod,
-                                        deleteFavorites: settings.autoDeleteFavorites))
+        let result = job.run(config: RetentionConfig(period: settings.retentionPeriod,
+                                                     deleteFavorites: settings.autoDeleteFavorites))
+        if !result.orphanedPaths.isEmpty {
+            writer.removeFiles(relPaths: result.orphanedPaths)
+        }
         refresh()
     }
 
