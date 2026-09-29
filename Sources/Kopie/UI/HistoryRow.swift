@@ -42,7 +42,6 @@ struct HistoryRow: View {
             Spacer()
             if !selectionMode && hovering {
                 quickButtons
-                    .transition(.opacity)
             }
         }
         .padding(8)
@@ -56,6 +55,9 @@ struct HistoryRow: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0; onHoverChange?(hovering) }
+        // Gives the quick-buttons opacity transition (and the selection fill)
+        // a 150ms ease instead of a hard swap.
+        .animation(.easeInOut(duration: 0.15), value: hovering)
         .contextMenu {
             ContextMenuBuilder(
                 item: item,
