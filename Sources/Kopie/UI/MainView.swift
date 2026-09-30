@@ -38,10 +38,20 @@ struct MainView: View {
     @State private var splitPosition: Double = SettingsStore.shared.splitPosition
     /// Clear-all confirmation, also triggered from the status menu.
     @State private var showClearAll = false
+    /// Debounce for the search field: the store query runs once typing pauses.
+    @State private var searchDebounce: Task<Void, Never>?
 
-    private var filtered: [ClipboardItem] {
+    /// The main window's list. Backed by the published `mainItems` snapshot —
+    /// never a store query in the body (queries here made every click lag).
+    private var filtered: [ClipboardItem] { state.mainItems }
+
+    /// Builds the query from the current sidebar filter + search text and
+    /// hands it to AppState. Called on filter changes, launch, and (after a
+    /// 0.2s debounce) search-text changes.
+    private func applyFilter() {
         var f = QueryFilter()
         f.textQuery = searchText
+        if !searchText.isEmpty { f.useRegex = searchText.isValidRegex }
         switch selection {
         case .text: f.kind = .text
         case .images: f.kind = .image
@@ -51,7 +61,7 @@ struct MainView: View {
         case .pinned: f.pinnedOnly = true
         default: break
         }
-        return state.store.query(f)
+        state.setMainQuery(f)
     }
 
     var body: some View {
@@ -98,18 +108,32 @@ struct MainView: View {
         .onAppear {
             // Load persisted split position
             splitPosition = SettingsStore.shared.splitPosition
+            applyFilter()
 
             // Auto-select the first item when the view appears
             if selectedID == nil, let firstItem = filtered.first {
                 selectedID = firstItem.id
             }
         }
-        .onChange(of: filtered) { items in
+        .onChange(of: selection) { _ in
+            applyFilter()
+        }
+        .onChange(of: searchText) { _ in
+            // Debounce: one store query after the user stops typing.
+            searchDebounce?.cancel()
+            searchDebounce = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+                applyFilter()
+            }
+        }
+        .onChange(of: state.mainItems) { items in
             // If the currently selected item is no longer visible, select the first one
             if let selectedID, !items.contains(where: { $0.id == selectedID }) {
                 self.selectedID = items.first?.id
             }
         }
+        .onDisappear { searchDebounce?.cancel() }
     }
 
     // MARK: - Computed widths

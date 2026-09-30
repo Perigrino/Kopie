@@ -7,6 +7,15 @@ final class AppState: ObservableObject {
     @Published var items: [ClipboardItem] = []
     @Published var searchText: String = ""
     @Published var isPaused: Bool = false
+    /// Snapshot backing the main window's list. Views read this instead of
+    /// querying the store during body evaluation (a query per render made
+    /// selection clicks lag and let background captures reorder the list
+    /// mid-interaction).
+    @Published var mainItems: [ClipboardItem] = []
+    private var mainFilter = QueryFilter()
+    /// Images whose thumbnail generation already failed — never retried in a
+    /// row render (a missing/corrupt file used to be re-decoded every pass).
+    private var thumbGenFailed: Set<String> = []
 
     @Published var showOnboarding: Bool = false
     @Published var isReturnLaunch = false
@@ -26,6 +35,8 @@ final class AppState: ObservableObject {
 
     /// Loads (and caches) the thumbnail for an image item, falling back to the full image.
     /// Uses lazy generation: if no thumbnail exists, generates one on-demand.
+    /// Generation failures are remembered in `thumbGenFailed` so a broken image
+    /// isn't re-decoded on every row render.
     func thumbnail(for item: ClipboardItem) -> NSImage? {
         guard item.kind == .image else { return nil }
         if let rel = item.thumbRelPath ?? item.imageRelPath {
@@ -36,16 +47,15 @@ final class AppState: ObservableObject {
                 return img
             }
         }
-        // Lazy generation: try to generate thumbnail on-demand
-        if let imageRel = item.imageRelPath {
+        // Lazy generation: try to generate thumbnail on-demand (once per image).
+        if let imageRel = item.imageRelPath, !thumbGenFailed.contains(imageRel) {
             let hashHex = (imageRel as NSString).lastPathComponent.replacingOccurrences(of: ".png", with: "")
-            if let thumbRel = thumbGenerator.generateThumbnailIfNeeded(imageRelPath: imageRel, hashHex: hashHex) {
-                if let img = writer.loadThumb(relPath: thumbRel) {
-                    let key = thumbRel as NSString
-                    Self.thumbCache.setObject(img, forKey: key)
-                    return img
-                }
+            if let thumbRel = thumbGenerator.generateThumbnailIfNeeded(imageRelPath: imageRel, hashHex: hashHex),
+               let img = writer.loadThumb(relPath: thumbRel) {
+                Self.thumbCache.setObject(img, forKey: thumbRel as NSString)
+                return img
             }
+            thumbGenFailed.insert(imageRel)
         }
         return nil
     }
@@ -129,6 +139,8 @@ final class AppState: ObservableObject {
         // One-time migration: clean up text entries that were really image
         // copies (captured as URLs before the image-first reader fix).
         OneTimeCleanup(store: store, writer: writer).run()
+        // Populate the main window's list snapshot before any view asks for it.
+        refreshMain()
         // launch-time catch-up retention
         runRetentionPolicy()
         // Start monitoring immediately so copies made during onboarding or the
@@ -166,6 +178,22 @@ final class AppState: ObservableObject {
 
     @objc private func storeChanged() { refresh() }
 
+    // MARK: - Main-window query
+
+    /// Re-runs the main-window query and republishes the result. Views read
+    /// `mainItems` instead of querying the store in their bodies — a query
+    /// per render made selection clicks lag and let background captures
+    /// reorder the list mid-interaction.
+    func refreshMain() {
+        mainItems = store.query(mainFilter)
+    }
+
+    /// Applies the main window's filter + search text, then refreshes.
+    func setMainQuery(_ filter: QueryFilter) {
+        mainFilter = filter
+        refreshMain()
+    }
+
     func setAmbientSpeed(_ speed: SettingsStore.AmbientSpeed) {
         settings.ambientSpeed = speed
         ambientSpeed = speed
@@ -193,6 +221,7 @@ final class AppState: ObservableObject {
     /// Clears regenerable cache (in-memory thumbnails + thumbnail files).
     func clearCache() {
         Self.thumbCache.removeAllObjects()
+        thumbGenFailed.removeAll()
         removeContents(of: StoragePaths.thumbsDir())
         refresh()
     }
@@ -229,6 +258,9 @@ final class AppState: ObservableObject {
             f.pinnedOnly = filter.pinnedOnly
         }
         items = store.query(f)
+        // Every mutation path calls refresh(); mirror the change into the main
+        // window's snapshot so its list and detail panel stay in sync.
+        refreshMain()
     }
 
     func startMonitoring() {
