@@ -14,6 +14,9 @@ struct HistoryRow: View {
     var onPin: () -> Void = {}
     /// Copies the item staging only the plain-text flavor (strips RTF/HTML).
     var onCopyPlainText: (() -> Void)? = nil
+    /// Adds/removes the item from the sequential paste queue.
+    var onToggleQueue: (() -> Void)? = nil
+    var isQueued: Bool = false
     var onToggleSelect: (() -> Void)? = nil
     /// When false, tapping the row does not copy (lets a containing List handle selection).
     var copyOnTap: Bool = true
@@ -67,7 +70,9 @@ struct HistoryRow: View {
                 onRemove: onRemove,
                 onFavorite: onFavorite,
                 onPin: onPin,
-                onCopyPlainText: onCopyPlainText
+                onCopyPlainText: onCopyPlainText,
+                onToggleQueue: onToggleQueue,
+                isQueued: isQueued
             )
         }
         .modifier(TapAction(enabled: selectionMode || copyOnTap) {
