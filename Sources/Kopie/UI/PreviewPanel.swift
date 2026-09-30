@@ -34,6 +34,14 @@ final class PreviewPanelController {
     private var clearWork: DispatchWorkItem?
     private var fadeWork: DispatchWorkItem?
     private var hoveringBubble = false
+    /// The bubble forces `.applicationDefined` behavior, which switches off
+    /// the system's outside-click close. These monitors replace it: clicks in
+    /// other apps (global) and in our own windows (local) collapse the
+    /// popover unless they land inside the list, the bubble, or a region the
+    /// app marks as inside (the menu-bar status button).
+    private var globalClickMonitor: Any?
+    private var localClickMonitor: Any?
+    var shouldIgnoreClick: ((CGPoint) -> Bool)?
 
     init(state: AppState) {
         self.state = state
@@ -52,6 +60,7 @@ final class PreviewPanelController {
         // Critical: with the popover transient, any click (or wheel-down)
         // outside it — including inside this bubble — closes the popover.
         popover?.behavior = .applicationDefined
+        installClickMonitors()
         layoutAndShow(win: win, animated: switched || panel?.isVisible != true)
     }
 
@@ -82,12 +91,50 @@ final class PreviewPanelController {
     func popoverDidClose() {
         clearWork?.cancel(); clearWork = nil
         hoveringBubble = false
+        removeClickMonitors()
         hide()
+    }
+
+    // MARK: Outside-click close (while the bubble holds the popover open)
+
+    private func installClickMonitors() {
+        if globalClickMonitor == nil {
+            globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.closeIfOutsideClick() }
+                }
+        }
+        if localClickMonitor == nil {
+            localClickMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                    MainActor.assumeIsolated { self?.closeIfOutsideClick() }
+                    return event
+                }
+        }
+    }
+
+    private func removeClickMonitors() {
+        if let m = globalClickMonitor { NSEvent.removeMonitor(m); globalClickMonitor = nil }
+        if let m = localClickMonitor { NSEvent.removeMonitor(m); localClickMonitor = nil }
+    }
+
+    /// Closes the popover when a click lands outside the list and bubble.
+    /// Clicks inside either surface — or inside an app-declared region like
+    /// the status button — pass through untouched.
+    private func closeIfOutsideClick() {
+        guard let pop = popover, pop.isShown else { removeClickMonitors(); return }
+        let loc = NSEvent.mouseLocation
+        if let win = pop.contentViewController?.view.window, win.frame.contains(loc) { return }
+        if let p = panel, p.isVisible, p.frame.contains(loc) { return }
+        if shouldIgnoreClick?(loc) == true { return }
+        removeClickMonitors()
+        pop.performClose(nil)
     }
 
     func hide() {
         visibleItem = nil
         rowY = nil
+        removeClickMonitors()
         popover?.behavior = .transient
         guard let p = panel, p.isVisible else { return }
         fadeWork?.cancel()

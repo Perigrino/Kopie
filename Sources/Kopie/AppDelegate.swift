@@ -39,6 +39,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         previewPanel = PreviewPanelController(state: state)
         previewPanel.popover = popover
+        // Clicks on the menu-bar icon belong to the popover's toggle, not to
+        // "outside": without this, the icon's own press would collapse the
+        // popover on mouse-down and re-open it on mouse-up.
+        previewPanel.shouldIgnoreClick = { [weak self] loc in
+            guard let self, let win = self.statusItem.button?.window else { return false }
+            return win.frame.contains(loc)
+        }
 
         GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
         GlobalActions.openSettings = { [weak self] in self?.showSettings() }
