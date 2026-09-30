@@ -64,26 +64,35 @@ struct DetailsPanel: View {
     /// blank). Kicks the one background parse via `AppState.loadRich` —
     /// never `resolve()` directly here: the WebKit round-trip it makes can
     /// hang the main thread. Shows plain text until the parse lands (the
-    /// cache is @Published, so this re-renders when ready).
+    /// cache is @Published, so this re-renders when ready). Rendered on the
+    /// shared dark code card so it reads like the code tab.
     private func richFormattedView(data: Data, isHTML: Bool) -> some View {
         if state.cachedRich(for: item) == nil {
             state.loadRich(item, data: data, isHTML: isHTML)
         }
         let resolved = state.cachedRich(for: item)
-        return VStack(alignment: .leading, spacing: 6) {
+        return DarkCodeCard(header: {
+            HStack(spacing: 8) {
+                Text("Rich Text")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(CodeCardPalette.fg)
+                Spacer()
+                if resolved?.usedFallback == true {
+                    Label("Plain-text fallback", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(CodeCardPalette.gutter)
+                }
+            }
+        }, content: {
             ScrollView {
                 RichTextRepresentation(
                     attributed: resolved?.text
-                        ?? NSAttributedString(string: item.text ?? ""))
+                        ?? NSAttributedString(string: item.text ?? ""),
+                    onDark: true)
+                    .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if resolved?.usedFallback == true {
-                Label("Rich formatting couldn't be displayed — showing plain text.",
-                      systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        })
     }
 
     @ViewBuilder private var content: some View {

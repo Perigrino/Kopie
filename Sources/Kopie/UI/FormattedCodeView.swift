@@ -2,6 +2,37 @@ import SwiftUI
 import AppKit
 import KopieCore
 
+/// Fixed always-dark code-card palette (independent of appearance), shared by
+/// every card that renders on the near-black surface.
+enum CodeCardPalette {
+    static let surface = Color(red: 0.118, green: 0.118, blue: 0.125) // ~#1E1E20
+    static let fg = Color(red: 0.83, green: 0.83, blue: 0.84)          // ~#D4D4D6
+    static let gutter = Color(red: 0.43, green: 0.46, blue: 0.51)      // ~#6E7681
+}
+
+/// Always-dark code-block card chrome: near-black surface, hairline border,
+/// header row, divider. Reused by `FormattedCodeView` and the rich-text
+/// Formatted tab so both read as the same kind of object.
+struct DarkCodeCard<Header: View, Content: View>: View {
+    @ViewBuilder var header: Header
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+            Divider().overlay(CodeCardPalette.fg.opacity(0.12))
+            content
+        }
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(CodeCardPalette.surface))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(CodeCardPalette.fg.opacity(0.18), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
 /// A universal formatted viewer. Detects the content's language, safely formats
 /// it when possible, applies syntax highlighting, and renders it as a dark
 /// code-block card (GitHub/IDE style): near-black surface, syntax-coloured
@@ -33,20 +64,13 @@ struct FormattedCodeView: View {
     private var lineCount: Int { max(formatted.split(separator: "\n", omittingEmptySubsequences: false).count, 1) }
 
     // Fixed dark code-block palette (independent of appearance).
-    private var surfaceColor: Color { Color(red: 0.118, green: 0.118, blue: 0.125) } // ~#1E1E20
-    private var fg: Color { Color(red: 0.83, green: 0.83, blue: 0.84) }              // ~#D4D4D6
-    private var gutterColor: Color { Color(red: 0.43, green: 0.46, blue: 0.51) }     // ~#6E7681
+    private var surfaceColor: Color { CodeCardPalette.surface }
+    private var fg: Color { CodeCardPalette.fg }
+    private var gutterColor: Color { CodeCardPalette.gutter }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider().overlay(fg.opacity(0.12))
-            codeArea
-        }
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(surfaceColor))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(fg.opacity(0.18), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .onDisappear { copyResetTask?.cancel() }
+        DarkCodeCard(header: { header }, content: { codeArea })
+            .onDisappear { copyResetTask?.cancel() }
     }
 
     // MARK: - Header
@@ -88,8 +112,7 @@ struct FormattedCodeView: View {
             .help("Copy content")
             .animation(.easeInOut(duration: 0.15), value: copied)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        // Padding comes from DarkCodeCard's header slot.
     }
 
     // MARK: - Code

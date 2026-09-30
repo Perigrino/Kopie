@@ -11,9 +11,14 @@ import AppKit
 /// know whether the rich formatting could actually be displayed.
 struct RichTextRepresentation: View {
     let attributed: NSAttributedString
+    /// True when rendering on an always-dark card: text/link colors are
+    /// remapped to light values so content stays readable in light
+    /// appearance (the parser normalizes to `labelColor`, which is black).
+    let onDark: Bool
 
-    init(attributed: NSAttributedString) {
+    init(attributed: NSAttributedString, onDark: Bool = false) {
         self.attributed = attributed
+        self.onDark = onDark
     }
 
     /// Outcome of resolving stored rich-text data for display. Checked
@@ -75,29 +80,40 @@ struct RichTextRepresentation: View {
     var body: some View {
         // AppKit-scoped attributes (fonts, colors, underline, links) are
         // understood by SwiftUI Text on macOS.
-        Text(AttributedString(attributed))
+        let shown = onDark
+            ? Self.paint(attributed,
+                         text: NSColor(red: 0.90, green: 0.90, blue: 0.92, alpha: 1),
+                         link: NSColor(red: 0.42, green: 0.62, blue: 1.0, alpha: 1))
+            : attributed
+        Text(AttributedString(shown))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
     }
 
-    /// Strips hard-coded colors from copied rich text so it stays readable in
-    /// both light and dark mode. HTML/RTF from other apps often carries explicit
-    /// colors (e.g. white text from a dark-mode chat, black text from a web page)
-    /// that become invisible against our background. Structure (bold, italic,
-    /// lists, headings) is preserved; links are re-styled with the system accent.
-    nonisolated private static func normalized(_ source: NSAttributedString) -> NSAttributedString {
+    /// Strips hard-coded colors from copied rich text so it stays readable on
+    /// the given background. HTML/RTF from other apps often carries explicit
+    /// colors (e.g. white text from a dark-mode chat, black text from a web
+    /// page) that become invisible against our background. Structure (bold,
+    /// italic, lists, headings) is preserved; links are re-styled.
+    nonisolated private static func paint(_ source: NSAttributedString,
+                                          text: NSColor, link: NSColor) -> NSAttributedString {
         let m = NSMutableAttributedString(attributedString: source)
         let full = NSRange(0..<m.length)
         m.removeAttribute(.foregroundColor, range: full)
         m.removeAttribute(.backgroundColor, range: full)
-        m.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
+        m.addAttribute(.foregroundColor, value: text, range: full)
         m.enumerateAttribute(.link, in: full) { value, range, _ in
             if value != nil {
-                m.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+                m.addAttribute(.foregroundColor, value: link, range: range)
                 m.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
             }
         }
         return m
+    }
+
+    /// Default (light/appearance-adaptive) painting used by the parser.
+    nonisolated static func normalized(_ source: NSAttributedString) -> NSAttributedString {
+        paint(source, text: NSColor.labelColor, link: NSColor.linkColor)
     }
 }
