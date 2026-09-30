@@ -72,9 +72,28 @@ enum SelfTest {
             let dark = args.count > 2 && args[2] == "dark"
             MainActor.assumeIsolated { renderDetailsPanel(item: item, dark: dark) }
         case "--smoke-render-popover":
-            // Renders PopoverView offscreen and writes a PNG snapshot to /tmp
-            // for visual verification (search field, header, rows).
-            MainActor.assumeIsolated { renderPopover(dark: args.first == "dark") }
+            // Renders PopoverView offscreen (pure list baseline — the preview
+            // lives in its own panel now) and writes a PNG to /tmp.
+            MainActor.assumeIsolated {
+                renderPopover(dark: args.contains("dark"))
+            }
+        case "--smoke-render-bubble":
+            // Renders the floating preview bubble offscreen. Args: [id |
+            // "text" | "image"] [dark] — kind picks the first matching item.
+            guard args.count > 1, args[1] != "dark" else {
+                print("ERR usage: --smoke-render-bubble <id|text|image> [dark]")
+                return true
+            }
+            let item: ClipboardItem?
+            if let id = Int64(args[1]) {
+                item = store.get(id)
+            } else {
+                item = store.query(.init(limit: 500)).first { $0.kind.rawValue == args[1] }
+            }
+            guard let item else { print("ERR no item \(args[1])"); return true }
+            MainActor.assumeIsolated {
+                renderBubble(item: item, dark: args.contains("dark"))
+            }
         default:
             return false
         }
@@ -146,5 +165,43 @@ enum SelfTest {
             print("WROTE \(out) \(png.count)B")
         }
         Self.writeWindowCapture(win, name: "kopie-render-popover\(dark ? "-dark" : "")")
+    }
+
+    @MainActor
+    private static func renderBubble(item: ClipboardItem, dark: Bool) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let state = AppState()
+        let view = PreviewBubbleView(
+            item: item,
+            tailSide: .trailing,
+            tailOffset: 0,
+            onHoverChange: { _ in })
+            .environmentObject(state)
+        let host = NSHostingController(rootView: view)
+        let win = NSWindow(contentViewController: host)
+        win.setContentSize(NSSize(width: 400, height: 400))
+        win.styleMask = [.titled]
+        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        // Rich items parse off the main thread now — give the background
+        // parse a beat to land so the capture shows the formatted text.
+        if item.isRichText {
+            let deadline = Date().addingTimeInterval(8)
+            while state.cachedRich(for: item) == nil, Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+            }
+        }
+        host.view.layoutSubtreeIfNeeded()
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let suffix = dark ? "-dark" : ""
+            let out = "/tmp/kopie-render-bubble\(suffix).png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-render-bubble\(dark ? "-dark" : "")")
     }
 }

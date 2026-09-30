@@ -13,12 +13,17 @@ struct PopoverView: View {
     @State private var toastTask: Task<Void, Never>?
     /// Flat index into `state.items` for keyboard navigation (nil = nothing highlighted).
     @State private var highlightedIndex: Int?
-    /// Item whose image is being previewed (hover or keyboard highlight).
-    @State private var previewID: Int64?
     /// True while Control is held: the next copy stages plain text only,
     /// stripping rich text (paste-as-plain-text one-shot override).
     @State private var controlHeld = false
     @State private var flagsMonitor: Any?
+    /// Item whose preview bubble we last requested — lets row-frame updates
+    /// re-anchor the (externally owned) bubble while the list scrolls.
+    @State private var activePreviewID: Int64?
+    /// Row frames in the popover root's coordinate space (top-down, live
+    /// layout position — scroll offsets are already baked in). Rows report
+    /// these through `RowFramePreference`.
+    @State private var rowFrames: [Int64: CGRect] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +35,7 @@ struct PopoverView: View {
             bottomBar
         }
         .frame(width: 440)
+        .coordinateSpace(name: Self.rootSpace)
         .onAppear {
             state.refresh()
             DispatchQueue.main.async { searchFocused = true }
@@ -40,7 +46,11 @@ struct PopoverView: View {
             highlightedIndex = state.items.isEmpty ? nil : 0
         }
         .onAppear { installKeyMonitor(); installFlagsMonitor() }
-        .onDisappear { removeKeyMonitor(); removeFlagsMonitor() }
+        .onDisappear {
+            removeKeyMonitor(); removeFlagsMonitor()
+            activePreviewID = nil
+            GlobalActions.clearPreview?(0)
+        }
         .overlay(alignment: .bottom) {
             if showToast {
                 CopiedToast().padding(.bottom, 12)
@@ -158,9 +168,10 @@ struct PopoverView: View {
                                            isQueued: state.isQueuedForPaste(item),
                                            onToggleSelect: { toggleSelect(item.id) },
                                            onHoverChange: { hovering in
-                                               previewID = hovering ? item.id : (previewID == item.id ? nil : previewID)
+                                               rowHover(item, hovering)
                                            })
                                     .id(item.id)
+                                    .modifier(RowGeometry(itemID: item.id))
                                     // Drag & drop out of Kopie: text drags its text,
                                     // images drag the bitmap, files their paths.
                                     .onDrag {
@@ -177,17 +188,21 @@ struct PopoverView: View {
                                             closeAndPaste()
                                         }
                                     })
-                                    .help("Click to copy · ⌥-click to copy and paste · ⌥1-9 quick-select · hold ⌃ to paste as plain text")
                             }
                         }
-                    }.padding(.horizontal, DS.pad).padding(.vertical, 8)
+                    }.padding(.horizontal, DS.pad).padding(.vertical, Self.listVerticalPadding)
                 }
-                .frame(height: 360)
-                .overlay(alignment: .top) { hoverPreview }
+                .frame(height: Self.listViewportHeight)
+                // Keep the externally owned bubble anchored while the list
+                // scrolls: forward the live row frame for the active preview.
+                .onPreferenceChange(RowFramePreference.self) { frames in
+                    let live = frames.filter { $0.value.width > 0 }
+                    guard live != rowFrames else { return }
+                    rowFrames = live
+                    forwardPreviewAnchor()
+                }
                 .onChange(of: highlightedIndex) { _ in
                     guard let i = highlightedIndex, state.items.indices.contains(i) else { return }
-                    let it = state.items[i]
-                    previewID = (it.kind == .image || (it.kind == .text && it.isRichText)) ? it.id : nil
                     withAnimation(.easeInOut(duration: 0.15)) {
                         proxy.scrollTo(state.items[i].id, anchor: .center)
                     }
@@ -196,75 +211,52 @@ struct PopoverView: View {
         }
     }
 
-    /// Item under the pointer or keyboard highlight (any kind).
-    private var previewCandidate: ClipboardItem? {
-        guard let id = previewID else { return nil }
-        return state.items.first { $0.id == id }
+    /// Show (or switch) the preview bubble for a row — hover or keyboard.
+    /// No preview fires on the programmatic highlight made when the popover
+    /// opens: only real interaction enters here.
+    private func showPreview(_ item: ClipboardItem) {
+        activePreviewID = item.id
+        GlobalActions.showPreview?(item, rowFrames[item.id]?.midY)
     }
 
-    private var previewItem: ClipboardItem? {
-        guard let item = previewCandidate, item.kind == .image else { return nil }
-        return item
+    /// Row-frame changes re-anchor the visible bubble (list scrolled under it).
+    private func forwardPreviewAnchor() {
+        guard let id = activePreviewID,
+              let item = state.items.first(where: { $0.id == id }) else { return }
+        GlobalActions.movePreview?(item, rowFrames[id]?.midY)
     }
 
-    /// Rich-text item under the pointer or keyboard highlight.
-    private var previewRichItem: ClipboardItem? {
-        guard let item = previewCandidate, item.kind == .text, item.isRichText else { return nil }
-        return item
-    }
-
-    /// Floating previews for the row under the pointer/keyboard highlight.
-    /// Floats over the list (not in flow) so the cursor never leaves the row it
-    /// is hovering, avoiding a hover↔layout flicker loop. Non-interactive so
-    /// mouse events pass through to the row underneath.
-    @ViewBuilder private var hoverPreview: some View {
-        imagePreview
-        richPreview
-    }
-
-    /// Rendered rich-text (RTF/HTML) preview of the highlighted item, styled
-    /// like the image preview. Uses the SwiftUI Text renderer so it paints
-    /// reliably inside the ScrollView-hosted overlay.
-    @ViewBuilder private var richPreview: some View {
-        if let item = previewRichItem, let data = state.richText(for: item) {
-            let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
-            let resolved = RichTextRepresentation.resolve(
-                data: data, isHTML: isHTML, fallbackText: item.text)
-            VStack(alignment: .leading, spacing: 4) {
-                ScrollView {
-                    RichTextRepresentation(attributed: resolved.text)
-                }
-                .frame(maxWidth: 408, maxHeight: 150)
-                Text(resolved.usedFallback ? "Rich Text (plain fallback)" : "Rich Text")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            .padding(10)
-            .frame(width: 428)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
-            .padding(.top, 6)
-            .transition(.opacity)
-            .allowsHitTesting(false)
+    private func rowHover(_ item: ClipboardItem, _ hovering: Bool) {
+        if hovering {
+            showPreview(item)
+        } else if activePreviewID == item.id {
+            GlobalActions.clearPreview?(0.5)
         }
     }
 
-    @ViewBuilder private var imagePreview: some View {
-        if let item = previewItem, item.kind == .image, let img = state.thumbnail(for: item) {
-            VStack(spacing: 4) {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 408, maxHeight: 170)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text("\(item.width ?? 0) × \(item.height ?? 0)")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            .padding(10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
-            .padding(.top, 6)
-            .transition(.opacity)
-            .allowsHitTesting(false)
+    private static let listViewportHeight: CGFloat = 360
+    private static let listVerticalPadding: CGFloat = 8
+    private static let rootSpace = "popoverRoot"
+
+    private struct RowFramePreference: PreferenceKey {
+        static let defaultValue: [Int64: CGRect] = [:]
+        static func reduce(value: inout [Int64: CGRect], nextValue: () -> [Int64: CGRect]) {
+            value.merge(nextValue()) { _, new in new }
+        }
+    }
+
+    /// Reports a row's frame in the popover root's coordinate space (top-down
+    /// from the window's top edge; scroll offsets are already applied).
+    private struct RowGeometry: ViewModifier {
+        let itemID: Int64
+        func body(content: Content) -> some View {
+            content.background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: RowFramePreference.self,
+                        value: [itemID: proxy.frame(in: .named("popoverRoot"))])
+                }
+            )
         }
     }
 
@@ -376,6 +368,7 @@ struct PopoverView: View {
             next = delta > 0 ? 0 : count - 1
         }
         highlightedIndex = next
+        showPreview(state.items[next])
     }
 
     private func toggleSelect(_ id: Int64) {

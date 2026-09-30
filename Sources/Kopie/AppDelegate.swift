@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
+    /// Floating chat-bubble preview beside the popover list.
+    private var previewPanel: PreviewPanelController!
     /// Headless launch probe (--smoke-windows): reports visible windows, then quits.
     private var smokeProbeTimer: Timer?
 
@@ -19,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
         applyAppearance()
+        // App Intents surface: hand the live state to the intents bridge.
+        KopieStateBridge.register(KopieStateHandle(state: state))
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = AppIcon.menuBarImage()
@@ -27,16 +31,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 340, height: 640)
+        popover.contentSize = NSSize(width: 440, height: 640)
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView().environmentObject(state))
 
+        previewPanel = PreviewPanelController(state: state)
+        previewPanel.popover = popover
+
         GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
         GlobalActions.openSettings = { [weak self] in self?.showSettings() }
         GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
         GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
+        GlobalActions.showPreview = { [weak self] item, y in self?.previewPanel.preview(item, rowY: y) }
+        GlobalActions.movePreview = { [weak self] item, y in self?.previewPanel.move(item, rowY: y) }
+        GlobalActions.clearPreview = { [weak self] seconds in self?.previewPanel.scheduleClear(after: seconds) }
 
         state.objectWillChange.sink { [weak self] _ in
             self?.applyVisibility()
@@ -165,6 +175,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let clearItem = menu.addItem(withTitle: "Clear History…",
                                      action: #selector(clearHistoryFromMenu), keyEquivalent: "")
         clearItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: clearItem.title)
+        // Sequential paste queue controls.
+        let qn = state.pasteQueueCount
+        if qn > 0 {
+            let next = menu.addItem(withTitle: "Paste Next (\(qn) queued)",
+                                    action: #selector(pasteNextFromMenu), keyEquivalent: "")
+            next.image = NSImage(systemSymbolName: "arrow.down.to.line.compact",
+                                 accessibilityDescription: next.title)
+            let clearQ = menu.addItem(withTitle: "Clear Paste Queue",
+                                      action: #selector(clearPasteQueueFromMenu), keyEquivalent: "")
+            clearQ.image = NSImage(systemSymbolName: "xmark.circle",
+                                   accessibilityDescription: clearQ.title)
+        }
         menu.addItem(.separator())
         let appearanceItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
         let appearanceMenu = NSMenu()
@@ -212,6 +234,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         else { state.pauseMonitoring() }
     }
 
+    @objc private func pasteNextFromMenu() {
+        _ = state.pasteNextFromQueue()
+    }
+
+    @objc private func clearPasteQueueFromMenu() {
+        state.clearPasteQueue()
+    }
+
     /// Clear-all uses the same typed-confirmation dialog as Settings → Encryption.
     @objc private func clearHistoryFromMenu() {
         showMainWindow()
@@ -221,6 +251,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
 
     func popoverDidShow(_ notification: Notification) {}
+
+    func popoverDidClose(_ notification: Notification) {
+        previewPanel?.popoverDidClose()
+    }
 
     // MARK: - Launch probe (--smoke-windows)
 
