@@ -213,8 +213,15 @@ struct PopoverView: View {
 
     /// Show (or switch) the preview bubble for a row — hover or keyboard.
     /// No preview fires on the programmatic highlight made when the popover
-    /// opens: only real interaction enters here.
+    /// opens: only real interaction enters here. Honors the
+    /// Settings → General "Show hover preview" toggle; when off, any
+    /// visible bubble is dismissed instead.
     private func showPreview(_ item: ClipboardItem) {
+        guard SettingsStore.shared.showMenuBarPreview else {
+            activePreviewID = nil
+            GlobalActions.clearPreview?(0)
+            return
+        }
         activePreviewID = item.id
         GlobalActions.showPreview?(item, rowFrames[item.id]?.midY)
     }

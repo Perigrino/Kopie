@@ -38,6 +38,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(s.excludedApps, [])
         XCTAssertEqual(s.hotkey, .default)
         XCTAssertEqual(s.appearance, .system)
+        XCTAssertEqual(s.showMenuBarPreview, true)
     }
 
     // MARK: - Round trip
@@ -59,6 +60,15 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(s2.showMenuBarIcon, false)
         XCTAssertEqual(s2.hotkey, HotKeySpec(keyCode: 12, modifiers: 0x0100))
         XCTAssertEqual(s2.excludedApps, [.init(id: "com.example.app", name: "Example")])
+    }
+
+    func test_showMenuBarPreview() {
+        let s = store()
+        XCTAssertEqual(s.showMenuBarPreview, true)
+        s.showMenuBarPreview = false
+        XCTAssertEqual(store().showMenuBarPreview, false)
+        s.showMenuBarPreview = true
+        XCTAssertEqual(store().showMenuBarPreview, true)
     }
 
     func test_appearanceRoundTripAndHealing() {

@@ -11,6 +11,7 @@ struct SettingsGeneralTab: View {
     @State private var appearance: SettingsStore.AppAppearance = SettingsStore.shared.appearance
     @AppStorage(SettingsStore.Keys.pasteDirect) private var pasteDirect = true
     @AppStorage(SettingsStore.Keys.pasteAsPlainText) private var pasteAsPlainText = false
+    @AppStorage(SettingsStore.Keys.showMenuBarPreview) private var showMenuBarPreview = true
 
     var body: some View {
         Form {
@@ -55,6 +56,14 @@ struct SettingsGeneralTab: View {
                 }
             } header: {
                 Text("Landing page")
+            }
+            Section {
+                Toggle("Show hover preview", isOn: $showMenuBarPreview)
+                Text("Displays a floating preview bubble beside the list when you hover or arrow-key through items in the menu bar popover.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Menu bar list")
             }
         }
         .formStyle(.grouped)

@@ -38,6 +38,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let pasteAsPlainText = "pasteAsPlainText"
         public static let pasteQueueIDs = "pasteQueueIDs"
         public static let splitPosition = "splitPosition"
+        public static let showMenuBarPreview = "showMenuBarPreview"
     }
 
     /// Bump when adding a new migration step.
@@ -134,7 +135,8 @@ public final class SettingsStore: @unchecked Sendable {
         let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.saveFiles,
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
                         Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
-                        Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText]
+                        Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText,
+                        Keys.showMenuBarPreview]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -248,6 +250,12 @@ public final class SettingsStore: @unchecked Sendable {
     public var showMenuBarIcon: Bool {
         get { defaults.object(forKey: Keys.showMenuBarIcon) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Keys.showMenuBarIcon) }
+    }
+
+    /// Floating hover-preview bubble beside the menu-bar popover's item list.
+    public var showMenuBarPreview: Bool {
+        get { defaults.object(forKey: Keys.showMenuBarPreview) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.showMenuBarPreview) }
     }
 
     public var hasSeenOnboarding: Bool {
