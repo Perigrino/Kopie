@@ -206,12 +206,6 @@ struct MainView: View {
                                        isQueued: state.isQueuedForPaste(item),
                                        copyOnTap: false)
                                 .tag(item.id)
-                                .onDrag {
-                                    if item.kind == .image, let img = state.thumbnail(for: item) {
-                                        return NSItemProvider(object: img)
-                                    }
-                                    return NSItemProvider(object: item.dragPayload as NSString)
-                                }
                         }
                     }
                 }

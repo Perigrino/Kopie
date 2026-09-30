@@ -182,14 +182,6 @@ struct PopoverView: View {
                                            })
                                     .id(item.id)
                                     .modifier(RowGeometry(itemID: item.id))
-                                    // Drag & drop out of Kopie: text drags its text,
-                                    // images drag the bitmap, files their paths.
-                                    .onDrag {
-                                        if item.kind == .image, let img = state.thumbnail(for: item) {
-                                            return NSItemProvider(object: img)
-                                        }
-                                        return NSItemProvider(object: item.dragPayload as NSString)
-                                    }
                                     // ⌥-click: copy back AND paste into the frontmost app.
                                     .onTapGesture { }
                                     .simultaneousGesture(TapGesture().modifiers(.option).onEnded { _ in

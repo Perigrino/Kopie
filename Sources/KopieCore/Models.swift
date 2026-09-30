@@ -112,16 +112,6 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     }
     public var isRichText: Bool { richTextRelPath != nil }
 
-    /// Payload for drag & drop out of Kopie: text items drag their text, file
-    /// items their (newline-separated) paths, images their OCR transcript when
-    /// one was recognized.
-    public var dragPayload: String {
-        switch kind {
-        case .text: return text ?? preview
-        case .file: return (filePaths ?? []).joined(separator: "\n")
-        case .image: return ocrText ?? ""
-        }
-    }
     public var preview: String {
         if kind == .file {
             let names = (filePaths ?? []).map { ($0 as NSString).lastPathComponent }
