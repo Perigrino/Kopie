@@ -15,9 +15,9 @@ Copy something, find it later, paste it back.
 
 | | |
 |---|---|
-| ![Onboarding final step — hotkey teaching](assets/screenshots/onboarding-ready.png) | ![Sensitive-data sentinel masks detected secrets](assets/screenshots/sentinel.png) |
+| <img src="assets/screenshots/onboarding-ready.png" width="270" alt="Onboarding final step — hotkey teaching"> | <img src="assets/screenshots/sentinel.png" width="270" alt="Sensitive-data sentinel masks detected secrets"> |
 | *Onboarding ends by teaching the hotkey* | *Sentinel masks a detected API token until revealed* |
-| ![Color swatch with copy actions](assets/screenshots/color-swatch.png) | |
+| <img src="assets/screenshots/color-swatch.png" width="270" alt="Color swatch with copy actions"> | |
 | *Copied colors become swatches with Copy HEX / RGB / HSL* | |
 
 ## Why Kopie?
