@@ -18,7 +18,7 @@ public final class RestoreService {
             board.setString(item.text ?? "", forType: .string)
             // Restore rich text if available
             if !plainTextOnly, let rtfRel = item.richTextRelPath,
-               let rtfData = try? writer.loadRichText(relPath: rtfRel) {
+               let rtfData = writer.loadRichText(relPath: rtfRel) {
                 board.setData(rtfData, forType: .rtf)
             }
         case .image:
