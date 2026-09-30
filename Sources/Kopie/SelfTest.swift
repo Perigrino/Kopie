@@ -77,6 +77,19 @@ enum SelfTest {
             MainActor.assumeIsolated {
                 renderPopover(dark: args.contains("dark"))
             }
+        case "--smoke-render-main":
+            // Renders MainView (sidebar + list + detail) offscreen for
+            // README screenshots. Honors KOPIE_STORAGE_DIR for demo stores.
+            MainActor.assumeIsolated {
+                renderMain(dark: args.contains("dark"))
+            }
+        case "--smoke-render-onboarding":
+            // Renders the onboarding window offscreen. Args: [step(0-4)] ["dark"]
+            // ["splash"] — "splash" fakes a return-launch splash, an integer
+            // step renders that onboarding step.
+            MainActor.assumeIsolated {
+                renderOnboarding(arg: args.count > 1 ? args[1] : "0", dark: args.contains("dark"))
+            }
         case "--smoke-render-bubble":
             // Renders the floating preview bubble offscreen. Args: [id |
             // "text" | "image"] [dark] — kind picks the first matching item.
@@ -122,6 +135,67 @@ enum SelfTest {
             print("WROTE \(out) \(png.count)B")
         }
         Self.writeWindowCapture(win, name: "kopie-render-\(item.id)\(dark ? "-dark" : "")")
+    }
+
+    /// Renders the main window (sidebar, history list, detail panel).
+    @MainActor
+    private static func renderMain(dark: Bool) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let state = AppState()
+        let host = NSHostingController(rootView: MainView().environmentObject(state))
+        let win = NSWindow(contentViewController: host)
+        win.setContentSize(NSSize(width: 900, height: 560))
+        win.styleMask = [.titled]
+        win.title = "Kopie"
+        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        host.view.layoutSubtreeIfNeeded()
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let suffix = dark ? "-dark" : ""
+            let out = "/tmp/kopie-render-main\(suffix).png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-render-main\(dark ? "-dark" : "")")
+    }
+
+    /// Renders the onboarding (step 0-4) or return-launch splash offscreen.
+    @MainActor
+    private static func renderOnboarding(arg: String, dark: Bool) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let state = AppState()
+        let view: OnboardingView
+        if arg == "splash" {
+            state.showOnboarding = true
+            state.isReturnLaunch = true
+            view = OnboardingView()
+        } else {
+            state.showOnboarding = true
+            state.isReturnLaunch = false
+            view = OnboardingView(initialStep: Int(arg) ?? 0)
+        }
+        let host = NSHostingController(rootView: view.environmentObject(state))
+        let win = NSWindow(contentViewController: host)
+        win.setContentSize(NSSize(width: 520, height: 420))
+        win.styleMask = [.titled]
+        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+        host.view.layoutSubtreeIfNeeded()
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let suffix = dark ? "-dark" : ""
+            let out = "/tmp/kopie-onboarding-\(arg)\(suffix).png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-onboarding-\(arg)\(dark ? "-dark" : "")")
     }
 
     /// Captures the window's actual composited pixels. `cacheDisplay` misses

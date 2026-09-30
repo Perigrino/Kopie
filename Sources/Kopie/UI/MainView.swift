@@ -42,6 +42,10 @@ struct MainView: View {
     @State private var splitPosition: Double = SettingsStore.shared.splitPosition
     /// Clear-all confirmation, also triggered from the status menu.
     @State private var showClearAll = false
+    /// Copy acknowledgment — the popover shows a toast; the main window was
+    /// silent, so a click felt like nothing happened.
+    @State private var showCopiedToast = false
+    @State private var copiedToastTask: Task<Void, Never>?
     /// Debounce for the search field: the store query runs once typing pauses.
     @State private var searchDebounce: Task<Void, Never>?
 
@@ -113,6 +117,11 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .kopieRequestClearAll)) { _ in
             showClearAll = true
+        }
+        .overlay(alignment: .bottom) {
+            if showCopiedToast {
+                CopiedToast().padding(.bottom, 16)
+            }
         }
         .onAppear {
             // Load persisted split position
@@ -225,7 +234,7 @@ struct MainView: View {
     private var detail: some View {
         Group {
             if let item = filtered.first(where: { $0.id == selectedID }) {
-                DetailsPanel(item: item)
+                DetailsPanel(item: item, onCopied: { showToast() })
             } else {
                 EmptyStateView(symbol: "square.stack", title: "Select an item", message: "Choose an item from your history to see its details.")
             }
@@ -234,6 +243,18 @@ struct MainView: View {
 
     private func copy(_ item: ClipboardItem) {
         state.copyBack(item)
+        showToast()
+    }
+
+    /// Shows the Copied toast for a moment, replacing any running timer.
+    private func showToast() {
+        showCopiedToast = true
+        copiedToastTask?.cancel()
+        copiedToastTask = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation { showCopiedToast = false }
+        }
     }
 
     /// Context-menu action: stages the item without its rich-text flavors.

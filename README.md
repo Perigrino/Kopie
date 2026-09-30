@@ -1,7 +1,24 @@
 # Kopie
 
+<p align="center">
+  <img src="assets/screenshots/landing.png" alt="Kopie welcome" width="480">
+</p>
+
 Native macOS clipboard manager — menu-bar first, fast, local-only.
 Copy something, find it later, paste it back.
+
+<p align="center">
+  <img src="assets/screenshots/main-window.png" alt="Kopie main window — sidebar filters, day-grouped history, detail panel" width="640">
+</p>
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Onboarding final step — hotkey teaching](assets/screenshots/onboarding-ready.png) | ![Sensitive-data sentinel masks detected secrets](assets/screenshots/sentinel.png) |
+| *Onboarding ends by teaching the hotkey* | *Sentinel masks a detected API token until revealed* |
+| ![Color swatch with copy actions](assets/screenshots/color-swatch.png) | |
+| *Copied colors become swatches with Copy HEX / RGB / HSL* | |
 
 ## Why Kopie?
 

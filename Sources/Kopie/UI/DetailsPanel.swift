@@ -4,6 +4,9 @@ import AppKit
 
 struct DetailsPanel: View {
     let item: ClipboardItem
+    /// Called after any acknowledgment-worthy action (color copy buttons);
+    /// lets the host surface its Copied toast.
+    var onCopied: (() -> Void)? = nil
     @EnvironmentObject var state: AppState
     @State private var showRichText = true
     /// Non-nil while the inline plain-text editor is open.
@@ -341,12 +344,15 @@ struct DetailsPanel: View {
             HStack(spacing: 8) {
                 Button("Copy HEX") {
                     state.copyTextToClipboard(color.hexString)
+                    onCopied?()
                 }
                 Button("Copy RGB") {
                     state.copyTextToClipboard(color.rgbString)
+                    onCopied?()
                 }
                 Button("Copy HSL") {
                     state.copyTextToClipboard(color.hslString)
+                    onCopied?()
                 }
             }
             .buttonStyle(.bordered)
