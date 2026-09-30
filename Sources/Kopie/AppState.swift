@@ -69,6 +69,41 @@ final class AppState: ObservableObject {
         return writer.loadRichText(relPath: rel)
     }
 
+    // MARK: - Parsed rich text (off the main thread)
+
+    /// Cached parse results keyed by item ID. `NSAttributedString(html:)`
+    /// blocks on the nsattributedstringagent/WebKit round-trip and can wedge
+    /// the main thread indefinitely (hang, 2026-09), so views must never call
+    /// `RichTextRepresentation.resolve` directly — they read this cache and
+    /// kick off `loadRich`, which parses once per item on a background task.
+    @Published private(set) var richResolved: [Int64: RichTextRepresentation.Resolved] = [:]
+    private var richInFlight: Set<Int64> = []
+
+    /// The parsed result, or nil while the parse is still pending.
+    func cachedRich(for item: ClipboardItem) -> RichTextRepresentation.Resolved? {
+        richResolved[item.id]
+    }
+
+    /// Starts a background parse for `item` if it hasn't run yet. Safe (and
+    /// cheap) to call from view bodies: it never parses on the calling
+    /// thread, and repeated calls while a parse is in flight are no-ops.
+    func loadRich(_ item: ClipboardItem, data: Data, isHTML: Bool) {
+        guard richResolved[item.id] == nil, !richInFlight.contains(item.id) else { return }
+        richInFlight.insert(item.id)
+        let id = item.id
+        let plain = item.text ?? item.preview
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = RichTextRepresentation.resolve(data: data, isHTML: isHTML, fallbackText: plain)
+            await self?.finishRich(id: id, result: result)
+        }
+    }
+
+    @MainActor
+    private func finishRich(id: Int64, result: RichTextRepresentation.Resolved) {
+        richResolved[id] = result
+        richInFlight.remove(id)
+    }
+
     init() {
         store = ClipStore()
         writer = DiskClipWriter()

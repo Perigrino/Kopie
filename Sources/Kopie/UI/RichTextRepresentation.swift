@@ -16,8 +16,10 @@ struct RichTextRepresentation: View {
         self.attributed = attributed
     }
 
-    /// Outcome of resolving stored rich-text data for display.
-    struct Resolved {
+    /// Outcome of resolving stored rich-text data for display. Checked
+    /// sendable: the attributed string is fully built (and never mutated)
+    /// before it crosses back to the main actor.
+    struct Resolved: @unchecked Sendable {
         let text: NSAttributedString
         /// True when the rich formatting (RTF/HTML) could not be parsed and a
         /// plain-text fallback is shown instead.
@@ -29,7 +31,11 @@ struct RichTextRepresentation: View {
     /// primary format → other format → the item's plain text → UTF-8 decode of
     /// the data. A parse that succeeds but yields only whitespace (some HTML
     /// payloads style-parse to nothing) counts as a failure.
-    static func resolve(data: Data, isHTML: Bool, fallbackText: String?) -> Resolved {
+    ///
+    /// `nonisolated`: the HTML path blocks on the nsattributedstringagent/
+    /// WebKit XPC round-trip and must run OFF the main thread (calling it on
+    /// the main thread from view code hangs the app — see AppState.loadRich).
+    nonisolated static func resolve(data: Data, isHTML: Bool, fallbackText: String?) -> Resolved {
         var attributed: NSAttributedString?
         if isHTML {
             attributed = NSAttributedString(html: data, documentAttributes: nil)
@@ -80,7 +86,7 @@ struct RichTextRepresentation: View {
     /// colors (e.g. white text from a dark-mode chat, black text from a web page)
     /// that become invisible against our background. Structure (bold, italic,
     /// lists, headings) is preserved; links are re-styled with the system accent.
-    private static func normalized(_ source: NSAttributedString) -> NSAttributedString {
+    nonisolated private static func normalized(_ source: NSAttributedString) -> NSAttributedString {
         let m = NSMutableAttributedString(attributedString: source)
         let full = NSRange(0..<m.length)
         m.removeAttribute(.foregroundColor, range: full)

@@ -47,6 +47,34 @@ struct DetailsPanel: View {
         return codeLanguage != .plainText ? codeLanguage : nil
     }
 
+    /// The Formatted tab for an item with stored rich text — rich formatting
+    /// is the item's true representation and always wins over the code
+    /// detector's guess about the plain text (fixes rich items rendering
+    /// blank). Kicks the one background parse via `AppState.loadRich` —
+    /// never `resolve()` directly here: the WebKit round-trip it makes can
+    /// hang the main thread. Shows plain text until the parse lands (the
+    /// cache is @Published, so this re-renders when ready).
+    private func richFormattedView(data: Data, isHTML: Bool) -> some View {
+        if state.cachedRich(for: item) == nil {
+            state.loadRich(item, data: data, isHTML: isHTML)
+        }
+        let resolved = state.cachedRich(for: item)
+        return VStack(alignment: .leading, spacing: 6) {
+            ScrollView {
+                RichTextRepresentation(
+                    attributed: resolved?.text
+                        ?? NSAttributedString(string: item.text ?? ""))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if resolved?.usedFallback == true {
+                Label("Rich formatting couldn't be displayed — showing plain text.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     @ViewBuilder private var content: some View {
         if item.kind == .text {
             VStack(alignment: .leading, spacing: 8) {
@@ -104,23 +132,7 @@ struct DetailsPanel: View {
                 Group {
                     if showRichText {
                         if hasRich, let data = data {
-                            // Rich formatting is the item's true representation —
-                            // it always wins over the code detector's guess about
-                            // the plain text (fixes rich items rendering blank).
-                            let resolved = RichTextRepresentation.resolve(
-                                data: data, isHTML: isHTML, fallbackText: item.text)
-                            VStack(alignment: .leading, spacing: 6) {
-                                ScrollView {
-                                    RichTextRepresentation(attributed: resolved.text)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                if resolved.usedFallback {
-                                    Label("Rich formatting couldn't be displayed — showing plain text.",
-                                          systemImage: "exclamationmark.triangle")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                            richFormattedView(data: data, isHTML: isHTML)
                         } else if isCode {
                             // No rich text stored: code-detected text gets the
                             // code card. It scrolls itself (both axes), so don't
