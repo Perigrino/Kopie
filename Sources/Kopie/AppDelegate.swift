@@ -14,8 +14,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var cancellables = Set<AnyCancellable>()
     /// Floating chat-bubble preview beside the popover list.
     private var previewPanel: PreviewPanelController!
+    /// Hides Kopie's windows from screen capture per the ScreenShield setting.
+    private var screenShield: ScreenShield!
     /// Headless launch probe (--smoke-windows): reports visible windows, then quits.
     private var smokeProbeTimer: Timer?
+
+    /// Shields (or unshields) every Kopie window. Each window's original
+    /// sharing type is remembered on first shield so un-shielding restores
+    /// exactly what the window was created with.
+    func setCaptureSharingType(_ shield: Bool, originalTypes: inout [ObjectIdentifier: NSWindow.SharingType]) {
+        for win in NSApp.windows where isKopieWindow(win) {
+            let key = ObjectIdentifier(win)
+            if originalTypes[key] == nil { originalTypes[key] = win.sharingType }
+            win.sharingType = shield ? .none : (originalTypes[key] ?? .none)
+        }
+    }
+
+    /// Kopie-owned windows only — never system windows that happen to be
+    /// listed (menus, the status-bar window).
+    private func isKopieWindow(_ win: NSWindow) -> Bool {
+        win === mainWindow || win === settingsWindow || win === onboardingWindow
+            || win === popover?.contentViewController?.view.window
+            || win === previewPanel?.panelWindow
+    }
 
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -42,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         previewPanel = PreviewPanelController(state: state)
         previewPanel.popover = popover
+        screenShield = ScreenShield(appDelegate: self)
         // Clicks on the menu-bar icon belong to the popover's toggle, not to
         // "outside": without this, the icon's own press would collapse the
         // popover on mouse-down and re-open it on mouse-up.
@@ -268,7 +290,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
 
-    func popoverDidShow(_ notification: Notification) {}
+    func popoverDidShow(_ notification: Notification) {
+        // The popover's window is created lazily on first show; re-apply the
+        // shield so a freshly created window starts with the right sharingType.
+        screenShield?.apply()
+    }
 
     func popoverDidClose(_ notification: Notification) {
         previewPanel?.popoverDidClose()
@@ -301,8 +327,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func registerHotKey() {
         let spec = SettingsStore.shared.hotkey
-        _ = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
+        let ok = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
             MainActor.assumeIsolated { self?.showFromHotKey() }
+        }
+        // A silently-failed registration means the global hotkey is simply
+        // dead — impossible to debug from user behavior alone.
+        if ok {
+            NSLog("Kopie hotkey registered (keyCode=%d, modifiers=%#x)", spec.keyCode, spec.modifiers)
+        } else {
+            NSLog("Kopie hotkey REGISTRATION FAILED (keyCode=%d, modifiers=%#x) — combo likely owned by another app", spec.keyCode, spec.modifiers)
         }
     }
 }

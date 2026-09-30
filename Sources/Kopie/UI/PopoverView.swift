@@ -177,6 +177,8 @@ struct PopoverView: View {
                                            onToggleQueue: { state.toggleQueued(item) },
                                            isQueued: state.isQueuedForPaste(item),
                                            onToggleSelect: { toggleSelect(item.id) },
+                                           onToggleExpire: { state.toggleExpireAfterUse(item) },
+                                           expiresAfterUse: state.isExpiredAfterUse(item),
                                            onHoverChange: { hovering in
                                                rowHover(item, hovering)
                                            })

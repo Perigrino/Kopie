@@ -18,6 +18,9 @@ struct HistoryRow: View {
     var onToggleQueue: (() -> Void)? = nil
     var isQueued: Bool = false
     var onToggleSelect: (() -> Void)? = nil
+    /// Marks/unmarks the item for delete-after-next-paste (one-time secrets).
+    var onToggleExpire: (() -> Void)? = nil
+    var expiresAfterUse: Bool = false
     /// When false, tapping the row does not copy (lets a containing List handle selection).
     var copyOnTap: Bool = true
     /// Notifies when the pointer enters/leaves the row (used for popover previews).
@@ -40,7 +43,19 @@ struct HistoryRow: View {
                             .font(.caption2)
                             .foregroundStyle(.blue)
                     }
-                    Text(item.preview).lineLimit(1).font(.body)
+                    if item.isSensitive {
+                        Image(systemName: "key.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .help(item.sensitiveKindLabel ?? "Sensitive content")
+                    }
+                    if expiresAfterUse {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .help("Deletes after the next paste")
+                    }
+                    Text(displayPreview).lineLimit(1).font(.body)
                 }
                 metadataLine
             }
@@ -72,13 +87,21 @@ struct HistoryRow: View {
                 onPin: onPin,
                 onCopyPlainText: onCopyPlainText,
                 onToggleQueue: onToggleQueue,
-                isQueued: isQueued
+                isQueued: isQueued,
+                onToggleExpire: onToggleExpire,
+                expiresAfterUse: expiresAfterUse
             )
         }
         .modifier(TapAction(enabled: selectionMode || copyOnTap) {
             if selectionMode { onToggleSelect?() ?? () }
             else { onCopy() }
         })
+    }
+
+    /// Sentinel-masked rows never show their content in the list — not even
+    /// on hover. Reveal happens only in the details panel, deliberately.
+    private var displayPreview: String {
+        item.isSensitive ? String(repeating: "•", count: 12) : item.preview
     }
 
     @ViewBuilder private var metadataLine: some View {
@@ -174,9 +197,21 @@ struct HistoryRow: View {
         }
     }
 
+    /// Color-copies present as their own swatch instead of a doc glyph.
+    private var colorValue: KopieCore.ColorParser.ColorValue? {
+        item.kind == .text ? ColorParser.parse(item.text ?? "") : nil
+    }
+
     @ViewBuilder private var icon: some View {
         ZStack(alignment: .bottomTrailing) {
-            if let thumb = thumbnail {
+            if let color = colorValue {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: nsColor(for: color)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+                    .frame(width: 40, height: 40)
+            } else if let thumb = thumbnail {
                 Image(nsImage: thumb)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -237,5 +272,9 @@ struct HistoryRow: View {
 
     private func time(_ d: Date) -> String {
         d.formatted(date: .omitted, time: .shortened)
+    }
+
+    private func nsColor(for v: KopieCore.ColorParser.ColorValue) -> NSColor {
+        NSColor(calibratedRed: v.red, green: v.green, blue: v.blue, alpha: v.alpha)
     }
 }

@@ -3,7 +3,7 @@ import KopieCore
 
 /// Sidebar history filters.
 enum HistoryFilter: String, CaseIterable, Identifiable {
-    case all, text, images, files, today, favorites, pinned
+    case all, text, images, files, today, favorites, pinned, sensitive
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -14,6 +14,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
         case .today: "Today"
         case .favorites: "Favorites"
         case .pinned: "Pinned"
+        case .sensitive: "Sensitive"
         }
     }
     var symbol: String {
@@ -25,6 +26,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
         case .today: "clock"
         case .favorites: "star"
         case .pinned: "pin"
+        case .sensitive: "key.fill"
         }
     }
 }
@@ -61,6 +63,7 @@ struct MainView: View {
         case .today: f.bucket = .today
         case .favorites: f.favoritesOnly = true
         case .pinned: f.pinnedOnly = true
+        case .sensitive: f.sensitiveOnly = true
         default: break
         }
         state.setMainQuery(f)
@@ -204,6 +207,8 @@ struct MainView: View {
                                        onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
                                        onToggleQueue: { state.toggleQueued(item) },
                                        isQueued: state.isQueuedForPaste(item),
+                                       onToggleExpire: { state.toggleExpireAfterUse(item) },
+                                       expiresAfterUse: state.isExpiredAfterUse(item),
                                        copyOnTap: false)
                                 .tag(item.id)
                         }

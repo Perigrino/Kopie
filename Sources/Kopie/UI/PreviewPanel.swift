@@ -28,6 +28,8 @@ final class PreviewPanelController {
     static let tailHeight: CGFloat = 16
 
     private var panel: NSPanel?
+    /// Read-only access for ScreenShield (sharingType application).
+    var panelWindow: NSPanel? { panel }
     private var visibleItem: ClipboardItem?
     private var rowY: CGFloat?           // row center, popover-root top-down
     private var tailSide: Edge = .trailing

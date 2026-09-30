@@ -35,6 +35,58 @@ struct SettingsPrivacyTab: View {
                     Spacer()
                 }
                 Divider()
+                Text("Sensitive data sentinel")
+                    .font(.headline)
+                Text("Detects passwords, API keys, and tokens in what you copy. Masked items are stored but hidden until you reveal them in the details panel.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Picker("When a secret is copied", selection: Binding(
+                    get: { SettingsStore.shared.sensitiveDataPolicy },
+                    set: { SettingsStore.shared.sensitiveDataPolicy = $0 })) {
+                    ForEach(SensitiveDataPolicy.allCases) { policy in
+                        Text(policy.label).tag(policy)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.bottom, 4)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Detection rules")
+                        .font(.subheadline.weight(.medium))
+                    ForEach(SensitiveDataDetector.allRules) { rule in
+                        Toggle(rule.label, isOn: Binding(
+                            get: { !SettingsStore.shared.sensitiveDisabledRules.contains(rule.id) },
+                            set: { on in
+                                var disabled = SettingsStore.shared.sensitiveDisabledRules
+                                if on { disabled.remove(rule.id) } else { disabled.insert(rule.id) }
+                                SettingsStore.shared.sensitiveDisabledRules = disabled
+                            }))
+                            .font(.caption)
+                    }
+                }
+                Toggle("Auto-delete one-time codes after pasting", isOn: Binding(
+                    get: { SettingsStore.shared.autoExpireOneTimeSecrets },
+                    set: { SettingsStore.shared.autoExpireOneTimeSecrets = $0 }))
+                    .font(.caption)
+                    .help("Recognized OTPs and magic-link URLs are removed from history when you paste them")
+                Divider()
+                Text("Screen share shield")
+                    .font(.headline)
+                Text("Shielded windows cannot appear in any screenshot, recording, or screen share — including your own.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Picker("Hide Kopie from screen capture", selection: Binding(
+                    get: { SettingsStore.shared.screenShieldMode },
+                    set: { newMode in
+                        SettingsStore.shared.screenShieldMode = newMode
+                        NotificationCenter.default.post(name: .kopieScreenShieldChanged, object: nil)
+                    })) {
+                    ForEach(ScreenShieldMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.bottom, 4)
+                Divider()
                 Toggle("Pause monitoring", isOn: Binding(
                     get: { state.isPaused },
                     set: { on in on ? state.pauseMonitoring() : state.startMonitoring() }))

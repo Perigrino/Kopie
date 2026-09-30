@@ -9,23 +9,48 @@ struct DetailsPanel: View {
     /// Non-nil while the inline plain-text editor is open.
     @State private var draftText: String?
     @State private var savedRecently = false
+    /// Result of the last JSON Validate action (nil = valid, else message).
+    @State private var jsonValidationMessage: String?
+    /// True briefly after a successful Validate (for the green confirmation).
+    @State private var jsonValidatedOK = false
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if item.isSensitive {
+                sensitiveBanner
+            }
             Text(item.typeLabel)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            if item.isSensitive && !revealed {
+                maskedContentPlaceholder
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            if let msg = jsonValidationMessage {
+                Label(msg, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if jsonValidatedOK {
+                Label("Valid JSON", systemImage: "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
             metaGrid
             actions
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: item.id) { _ in
-            // Switching items discards any unsaved edit.
+            // Switching items discards any unsaved edit — and re-masks
+            // sensitive content so a reveal never leaks across items.
             draftText = nil
             savedRecently = false
+            revealed = false
+            jsonValidationMessage = nil
+            jsonValidatedOK = false
             showRichText = defaultFormattedTab
         }
         .onAppear {
@@ -120,7 +145,10 @@ struct DetailsPanel: View {
                             Label("Saved", systemImage: "checkmark.circle.fill")
                                 .font(.caption).foregroundStyle(.green)
                         }
-                        Button("Cancel") { draftText = nil }
+                        Button("Cancel") {
+                            draftText = nil
+                            jsonValidationMessage = nil
+                        }
                         Button("Save") {
                             if let draft = draftText {
                                 state.updateText(item, to: draft)
@@ -138,11 +166,17 @@ struct DetailsPanel: View {
                     } else {
                         Button {
                             draftText = item.text ?? ""
+                            jsonValidationMessage = nil
                         } label: {
                             Label("Edit", systemImage: "pencil")
                         }
                         .keyboardShortcut("e", modifiers: .command)
                         .help("Edit this text (⌘E)")
+                    }
+
+                    // JSON utilities: Pretty / Minify / Validate on code items.
+                    if codeLanguage == .json, let original = item.text {
+                        jsonMenu(originalText: original)
                     }
                 }
 
@@ -191,6 +225,8 @@ struct DetailsPanel: View {
             }
         } else if item.kind == .image {
             DetailsImage(item: item)
+        } else if let color = item.kind == .text ? ColorParser.parse(item.text ?? "") : nil {
+            colorSwatch(color)
         } else {
             EmptyStateView(symbol: "photo", title: "Image unavailable", message: "The image file could not be loaded.")
         }
@@ -289,6 +325,113 @@ struct DetailsPanel: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Large swatch with copy actions for color-literal items (plus the
+    /// original text for reference).
+    private func colorSwatch(_ color: KopieCore.ColorParser.ColorValue) -> some View {
+        let nsColor = NSColor(calibratedRed: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
+        return VStack(alignment: .leading, spacing: 12) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: nsColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+                .frame(height: 96)
+            HStack(spacing: 8) {
+                Button("Copy HEX") {
+                    state.copyTextToClipboard(color.hexString)
+                }
+                Button("Copy RGB") {
+                    state.copyTextToClipboard(color.rgbString)
+                }
+                Button("Copy HSL") {
+                    state.copyTextToClipboard(color.hslString)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                GridRow { Text("HEX").foregroundStyle(.secondary); Text("#\(color.hexString)").textSelection(.enabled) }
+                GridRow { Text("RGB").foregroundStyle(.secondary); Text(color.rgbString).textSelection(.enabled) }
+                GridRow { Text("HSL").foregroundStyle(.secondary); Text(color.hslString).textSelection(.enabled) }
+            }
+            .font(.caption)
+        }
+    }
+
+    /// Stands in for the real content while a sensitive item is masked.
+    private var maskedContentPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(.tertiary)
+            Text("Content hidden")
+                .font(.callout.weight(.medium))
+            Text("Reveal above to view, edit, or copy this content.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Pretty/Minify write back through `state.updateText` (re-hashes so
+    /// re-copying the formatted text dedupes); Validate reports inline.
+    private func jsonMenu(originalText: String) -> some View {
+        Menu {
+            Button("Pretty Print") {
+                if let out = try? JSONUtilities.format(originalText, as: .twoSpace) {
+                    state.updateText(item, to: out)
+                }
+            }
+            Button("Minify") {
+                if let out = try? JSONUtilities.format(originalText, as: .minified) {
+                    state.updateText(item, to: out)
+                }
+            }
+            Divider()
+            Button("Validate") {
+                if let msg = JSONUtilities.validate(originalText) {
+                    jsonValidationMessage = msg
+                    jsonValidatedOK = false
+                } else {
+                    jsonValidationMessage = nil
+                    jsonValidatedOK = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        jsonValidatedOK = false
+                    }
+                }
+            }
+        } label: {
+            Label("JSON", systemImage: "curlybraces")
+        }
+        .help("Pretty-print, minify, or validate this JSON")
+    }
+    /// Content stays masked until the user clicks — deliberate friction.
+    @State private var revealed = false
+
+    private var sensitiveBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sensitive content")
+                        .font(.callout.weight(.semibold))
+                    Text("Detected as \(item.sensitiveKindLabel ?? "a possible secret") — masked until you reveal it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(revealed ? "Hide" : "Reveal") { revealed.toggle() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var metaGrid: some View {
