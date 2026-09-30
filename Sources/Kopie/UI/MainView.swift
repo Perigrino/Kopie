@@ -34,7 +34,9 @@ struct MainView: View {
     @State private var selection: HistoryFilter? = .all
     @State private var selectedID: Int64?
     @State private var searchText = ""
-    @State private var sidebarVisible: Bool = false
+    /// Filter sidebar: on by default (categories must be discoverable),
+    /// persisted per the user's toggle.
+    @AppStorage("sidebarVisible") private var sidebarVisible = true
     @State private var splitPosition: Double = SettingsStore.shared.splitPosition
     /// Clear-all confirmation, also triggered from the status menu.
     @State private var showClearAll = false
@@ -65,23 +67,27 @@ struct MainView: View {
     }
 
     var body: some View {
-        HSplitView {
-            // Sidebar (visible only when toggled on)
-            if sidebarVisible {
-                sidebarContent
-                    .frame(minWidth: 170, idealWidth: 190)
+        // NavigationStack gives .searchable a home — without it the search
+        // field never renders (this view is hosted in a bare NSHostingController).
+        NavigationStack {
+            HSplitView {
+                // Sidebar (visible only when toggled on)
+                if sidebarVisible {
+                    sidebarContent
+                        .frame(minWidth: 170, idealWidth: 190)
+                }
+
+                // History list – 40% of available width
+                list
+                    .frame(
+                        minWidth: 200,
+                        idealWidth: idealListWidth
+                    )
+
+                // Detail panel – fills remaining space
+                detail
+                    .frame(minWidth: 300)
             }
-
-            // History list – 40% of available width
-            list
-                .frame(
-                    minWidth: 200,
-                    idealWidth: idealListWidth
-                )
-
-            // Detail panel – fills remaining space
-            detail
-                .frame(minWidth: 300)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
