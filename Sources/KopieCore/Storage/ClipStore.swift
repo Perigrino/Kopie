@@ -30,7 +30,10 @@ public final class ClipStore {
       is_pinned INTEGER NOT NULL DEFAULT 0,
       pinned_at INTEGER,
       rich_text_rel_path TEXT,
-      ocr_text TEXT);
+      ocr_text TEXT,
+      is_sensitive INTEGER NOT NULL DEFAULT 0,
+      sensitive_kind TEXT,
+      expires_after_use INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS idx_ci_created ON clipboard_items(created_at);
     CREATE INDEX IF NOT EXISTS idx_ci_kind ON clipboard_items(kind);
     CREATE INDEX IF NOT EXISTS idx_ci_hash ON clipboard_items(content_hash);
@@ -112,6 +115,15 @@ public final class ClipStore {
         if !existingColumns.contains("ocr_text") {
             _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN ocr_text TEXT", [])
         }
+        if !existingColumns.contains("is_sensitive") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN is_sensitive INTEGER NOT NULL DEFAULT 0", [])
+        }
+        if !existingColumns.contains("sensitive_kind") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN sensitive_kind TEXT", [])
+        }
+        if !existingColumns.contains("expires_after_use") {
+            _ = try? db.run("ALTER TABLE clipboard_items ADD COLUMN expires_after_use INTEGER NOT NULL DEFAULT 0", [])
+        }
     }
 
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
@@ -191,14 +203,18 @@ public final class ClipStore {
     public func insert(_ item: ClipboardItem) -> Int64 {
         do {
             _ = try db.run(
-        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text,is_sensitive,sensitive_kind,expires_after_use) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
          item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
          item.width.flatMap(Int64.init), item.height.flatMap(Int64.init),
          item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms),
-         item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath, item.ocrText])
+         item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath, item.ocrText,
+         item.isSensitive ? 1 : 0, item.sensitiveKind, item.expiresAfterUse ? 1 : 0])
             let id = db.scalarInt64("SELECT last_insert_rowid()")
-            let tokens = searchTokens(for: item)
+            // Sentinel-flagged rows are kept out of the search index on
+            // purpose: they should be findable via the Sensitive filter (by
+            // kind), never by guessing their content.
+            let tokens = item.isSensitive ? [] : searchTokens(for: item)
             if !tokens.isEmpty {
                 indexTokens(tokens, for: id)
             }
@@ -210,7 +226,7 @@ public final class ClipStore {
     }
 
     private static let cols =
-        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text"
+        "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text,is_sensitive,sensitive_kind,expires_after_use"
 
     /// History ordering, newest first, behind the pinned-first prefixes.
     ///
@@ -242,7 +258,10 @@ public final class ClipStore {
             isPinned: (r[15] as? Int64 ?? 0) != 0,
             pinnedAt: (r[16] as? Int64).map(date),
             richTextRelPath: r[17] as? String,
-            ocrText: r[18] as? String)
+            ocrText: r[18] as? String,
+            isSensitive: (r[19] as? Int64 ?? 0) != 0,
+            sensitiveKind: r[20] as? String,
+            expiresAfterUse: (r[21] as? Int64 ?? 0) != 0)
     }
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
@@ -254,6 +273,7 @@ public final class ClipStore {
         if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
         if f.favoritesOnly { whereC.append("is_favorite = 1") }
         if f.pinnedOnly { whereC.append("is_pinned = 1") }
+        if f.sensitiveOnly { whereC.append("is_sensitive = 1") }
         if let b = f.bucket {
             let cal = Calendar.current
             let now = Date.now
@@ -294,6 +314,7 @@ public final class ClipStore {
         if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
         if f.favoritesOnly { whereC.append("is_favorite = 1") }
         if f.pinnedOnly { whereC.append("is_pinned = 1") }
+        if f.sensitiveOnly { whereC.append("is_sensitive = 1") }
         if let b = f.bucket {
             let cal = Calendar.current
             let now = Date.now
@@ -375,6 +396,35 @@ public final class ClipStore {
                         [flag ? 1 : 0, flag ? ms(.now) : nil, id])
     }
 
+    public func setExpiresAfterUse(_ id: Int64, _ flag: Bool) {
+        _ = try? db.run("UPDATE clipboard_items SET expires_after_use = ? WHERE id = ?",
+                        [flag ? 1 : 0, id])
+    }
+
+    /// Deletes unused delete-after-use items older than `cutoff` (pinned and
+    /// favorite rows are never touched), returning orphaned content paths.
+    @discardableResult
+    public func purgeExpiredUnused(olderThan cutoff: Date) -> [String] {
+        var stalePaths = Set<String>()
+        if let rows = try? db.rows(
+            "SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items " +
+            "WHERE expires_after_use = 1 AND created_at < ? AND is_pinned = 0 AND is_favorite = 0",
+            [ms(cutoff)]) {
+            for r in rows {
+                for i in 0..<3 {
+                    if let p = r[i] as? String { stalePaths.insert(p) }
+                }
+            }
+        }
+        let n = (try? db.run(
+            "DELETE FROM clipboard_items WHERE expires_after_use = 1 AND created_at < ? AND is_pinned = 0 AND is_favorite = 0",
+            [ms(cutoff)])) ?? 0
+        sweepOrphanIndex()
+        guard n > 0 else { return [] }
+        stalePaths.subtract(stillReferencedPaths())
+        return Array(stalePaths)
+    }
+
     /// Replaces the text of a text item and refreshes everything derived from
     /// it: the content hash (so re-copying the edited text dedupes against this
     /// row), the byte size, and the encrypted search-index tokens. Returns
@@ -386,9 +436,11 @@ public final class ClipStore {
         guard (try? db.run(
             "UPDATE clipboard_items SET text_content = ?, content_hash = ?, file_size = ? WHERE id = ?",
             [storedText(newText), newHash, Int64(newText.utf8.count), id])) != nil else { return false }
-        // Rebuild the search index for this row from the new text.
+        // Rebuild the search index for this row from the new text (sensitive
+        // rows stay unindexed — see insert).
         _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
-        if let tokens = crypto?.searchTokens(for: newText), !tokens.isEmpty {
+        if let item = get(id), !item.isSensitive,
+           let tokens = crypto?.searchTokens(for: newText), !tokens.isEmpty {
             indexTokens(tokens, for: id)
         }
         return true

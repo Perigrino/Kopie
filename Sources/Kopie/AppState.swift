@@ -279,6 +279,17 @@ final class AppState: ObservableObject {
     func copyBack(_ item: ClipboardItem, plainTextOnly: Bool = false) {
         restoreSVC.restore(item, writer: writer, plainTextOnly: plainTextOnly)
         store.bumpAccessed(item.id)
+        // One-time secrets: staging them onto the clipboard IS the use —
+        // drop them from history so the code never lingers.
+        if item.expiresAfterUse {
+            writer.removeFiles(relPaths: store.delete([item.id]))
+        }
+        refresh()
+    }
+
+    /// Marks/unmarks an item for delete-after-next-paste.
+    func toggleExpireAfterUse(_ item: ClipboardItem) {
+        store.setExpiresAfterUse(item.id, !item.expiresAfterUse)
         refresh()
     }
 
@@ -306,6 +317,11 @@ final class AppState: ObservableObject {
     /// True when the item is waiting somewhere in the paste queue.
     func isQueuedForPaste(_ item: ClipboardItem) -> Bool {
         settings.pasteQueueIDs.contains(item.id)
+    }
+
+    /// True when the item is flagged for delete-after-next-paste.
+    func isExpiredAfterUse(_ item: ClipboardItem) -> Bool {
+        item.expiresAfterUse
     }
 
     /// Number of items still waiting in the paste queue.
@@ -354,6 +370,16 @@ final class AppState: ObservableObject {
         return store.query(f)
     }
 
+    /// Stages plain text on the system clipboard WITHOUT recording it in
+    /// history (used by e.g. color-swatch copy actions). The monitor
+    /// suppresses the resulting change, so nothing new is captured.
+    func copyTextToClipboard(_ text: String) {
+        monitor.beginSuppression()
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(text, forType: .string)
+    }
+
     /// Context-menu convenience: toggles the item's presence in the queue.
     func toggleQueued(_ item: ClipboardItem) {
         if isQueuedForPaste(item) {
@@ -382,6 +408,13 @@ final class AppState: ObservableObject {
                                                      deleteFavorites: settings.autoDeleteFavorites))
         if !result.orphanedPaths.isEmpty {
             writer.removeFiles(relPaths: result.orphanedPaths)
+        }
+        // Unused one-time secrets are swept alongside retention (the hourly
+        // timer covers them; restore-time deletion covers the used ones).
+        let cutoff = Date.now.addingTimeInterval(-24 * 3600)
+        let expiredPaths = store.purgeExpiredUnused(olderThan: cutoff)
+        if !expiredPaths.isEmpty {
+            writer.removeFiles(relPaths: expiredPaths)
         }
         refresh()
     }

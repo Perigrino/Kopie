@@ -39,6 +39,10 @@ public final class SettingsStore: @unchecked Sendable {
         public static let pasteQueueIDs = "pasteQueueIDs"
         public static let splitPosition = "splitPosition"
         public static let showMenuBarPreview = "showMenuBarPreview"
+        public static let sensitiveDataPolicy = "sensitiveDataPolicy"
+        public static let sensitiveDisabledRules = "sensitiveDisabledRules"
+        public static let autoExpireOneTimeSecrets = "autoExpireOneTimeSecrets"
+        public static let screenShieldMode = "screenShieldMode"
     }
 
     /// Bump when adding a new migration step.
@@ -136,7 +140,7 @@ public final class SettingsStore: @unchecked Sendable {
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
                         Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
                         Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText,
-                        Keys.showMenuBarPreview]
+                        Keys.showMenuBarPreview, Keys.autoExpireOneTimeSecrets]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -355,6 +359,57 @@ public final class SettingsStore: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Keys.splitPosition) }
     }
 
+    // MARK: - Sensitive-data sentinel
+
+    /// What happens when copied content matches a secret rule.
+    /// Default `.mask`: store it, but render masked until revealed.
+    public var sensitiveDataPolicy: SensitiveDataPolicy {
+        get {
+            guard let raw = defaults.string(forKey: Keys.sensitiveDataPolicy),
+                  let policy = SensitiveDataPolicy(rawValue: raw) else { return .mask }
+            return policy
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.sensitiveDataPolicy) }
+    }
+
+    /// Rule ids the user turned off in Settings → Privacy.
+    public var sensitiveDisabledRules: Set<String> {
+        get {
+            guard let data = defaults.data(forKey: Keys.sensitiveDisabledRules),
+                  let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return Set(list)
+        }
+        set {
+            let list = Array(newValue).sorted()
+            if list.isEmpty {
+                defaults.removeObject(forKey: Keys.sensitiveDisabledRules)
+            } else if let data = try? JSONEncoder().encode(list) {
+                defaults.set(data, forKey: Keys.sensitiveDisabledRules)
+            }
+        }
+    }
+
+    public var sensitiveEnabledRules: Set<String> {
+        SensitiveDataDetector.allRuleIDs.subtracting(sensitiveDisabledRules)
+    }
+
+    /// Auto-flag OTPs / magic links for delete-after-next-paste (Phase 2).
+    public var autoExpireOneTimeSecrets: Bool {
+        get { defaults.object(forKey: Keys.autoExpireOneTimeSecrets) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.autoExpireOneTimeSecrets) }
+    }
+
+    /// When Kopie's windows should be invisible to screen capture
+    /// (screenshots, screen sharing, recording).
+    public var screenShieldMode: ScreenShieldMode {
+        get {
+            guard let raw = defaults.string(forKey: Keys.screenShieldMode),
+                  let mode = ScreenShieldMode(rawValue: raw) else { return .whenConferencing }
+            return mode
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.screenShieldMode) }
+    }
+
     /// The capture configuration derived from the current settings.
     public var captureConfig: CaptureConfig {
         CaptureConfig(
@@ -366,6 +421,9 @@ public final class SettingsStore: @unchecked Sendable {
             maxItems: maxItems,
             excludedAppIDs: excludedAppIDs,
             trackSourceApp: trackSourceApp,
-            ocrImages: ocrImages)
+            ocrImages: ocrImages,
+            sensitivePolicy: sensitiveDataPolicy,
+            sensitiveEnabledRules: sensitiveEnabledRules,
+            autoExpireOneTime: autoExpireOneTimeSecrets)
     }
 }

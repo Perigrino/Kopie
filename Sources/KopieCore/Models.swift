@@ -27,16 +27,19 @@ public struct QueryFilter: Hashable, Sendable {
     public var bucket: DateBucket? = nil
     public var favoritesOnly: Bool = false
     public var pinnedOnly: Bool = false
+    public var sensitiveOnly: Bool = false
     public var useRegex: Bool = false
     public var limit: Int = 200
 
     public init(textQuery: String = "", kind: ClipKind? = nil, bucket: DateBucket? = nil,
-                favoritesOnly: Bool = false, pinnedOnly: Bool = false, useRegex: Bool = false, limit: Int = 200) {
+                favoritesOnly: Bool = false, pinnedOnly: Bool = false, sensitiveOnly: Bool = false,
+                useRegex: Bool = false, limit: Int = 200) {
         self.textQuery = textQuery
         self.kind = kind
         self.bucket = bucket
         self.favoritesOnly = favoritesOnly
         self.pinnedOnly = pinnedOnly
+        self.sensitiveOnly = sensitiveOnly
         self.useRegex = useRegex
         self.limit = limit
     }
@@ -64,13 +67,22 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
     /// Text recognized inside an image copy (on-device OCR), so screenshots
     /// are searchable by their content. nil when absent or disabled.
     public var ocrText: String?
+    /// Sentinel flag: content matched a secret rule. Rows render masked;
+    /// the match kind explains why (see `sensitiveKindLabel`).
+    public var isSensitive: Bool
+    /// Raw `SensitiveMatch.Kind.rawValue` of the rule that fired, if any.
+    public var sensitiveKind: String?
+    /// Delete-after-next-paste flag (one-time codes, magic links).
+    public var expiresAfterUse: Bool
 
     public init(id: Int64, kind: ClipKind, createdAt: Date, lastAccessedAt: Date, isFavorite: Bool,
                 contentHash: String, text: String?, imageRelPath: String?, thumbRelPath: String?,
                 fileSize: Int, width: Int?, height: Int?, sourceApp: String? = nil,
                 copyCount: Int = 1, lastCopiedAt: Date? = nil,
                 isPinned: Bool = false, pinnedAt: Date? = nil,
-                richTextRelPath: String? = nil, ocrText: String? = nil) {
+                richTextRelPath: String? = nil, ocrText: String? = nil,
+                isSensitive: Bool = false, sensitiveKind: String? = nil,
+                expiresAfterUse: Bool = false) {
         self.id = id
         self.kind = kind
         self.createdAt = createdAt
@@ -90,6 +102,9 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         self.isPinned = isPinned
         self.pinnedAt = pinnedAt
         self.ocrText = ocrText
+        self.isSensitive = isSensitive
+        self.sensitiveKind = sensitiveKind
+        self.expiresAfterUse = expiresAfterUse
     }
 
     public var charCount: Int? { text?.count }
@@ -111,6 +126,11 @@ public struct ClipboardItem: Identifiable, Equatable, Sendable {
         copyCount == 1 ? "1 copy" : "\(copyCount) copies"
     }
     public var isRichText: Bool { richTextRelPath != nil }
+
+    /// Human label for the sentinel match ("API key or token", …).
+    public var sensitiveKindLabel: String? {
+        SensitiveMatch.Kind(rawValue: sensitiveKind ?? "")?.label
+    }
 
     public var preview: String {
         if kind == .file {

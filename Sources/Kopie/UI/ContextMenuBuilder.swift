@@ -13,6 +13,9 @@ struct ContextMenuBuilder: View {
     /// Adds/removes the item from the sequential paste queue.
     var onToggleQueue: (() -> Void)? = nil
     var isQueued: Bool = false
+    /// Marks/unmarks delete-after-next-paste (one-time secrets).
+    var onToggleExpire: (() -> Void)? = nil
+    var expiresAfterUse: Bool = false
     
     var body: some View {
         // Primary actions
@@ -31,6 +34,13 @@ struct ContextMenuBuilder: View {
             Button(action: onToggleQueue) {
                 Label(isQueued ? "Remove from Paste Queue" : "Add to Paste Queue",
                       systemImage: isQueued ? "minus.circle" : "list.number")
+            }
+        }
+
+        if let onToggleExpire {
+            Button(action: onToggleExpire) {
+                Label(expiresAfterUse ? "Keep After Pasting" : "Delete After Next Paste",
+                      systemImage: expiresAfterUse ? "clock.arrow.circlepath" : "clock.badge.xmark")
             }
         }
 

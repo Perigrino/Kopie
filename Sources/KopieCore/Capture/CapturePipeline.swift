@@ -8,6 +8,8 @@ public enum CaptureResult: Equatable {
     case excludedApp
     case duplicate
     case empty
+    /// Content matched a secret rule under the `skipCapture` policy.
+    case sensitiveSkipped
     case writeError(String)
 }
 
@@ -114,6 +116,24 @@ public final class CapturePipeline {
         // failure never blocks the capture.
         if config.ocrImages, let data = ocrData {
             item.ocrText = ImageTextRecognizer.recognizeText(in: data)
+        }
+
+        // Sensitive-data sentinel: classify once, then apply the policy.
+        // Mask-not-drop: only `skipCapture` discards, and only for text
+        // content (images/files have no reliable text classifier yet).
+        if let text = content.text {
+            if let match = SensitiveDataDetector.detect(in: text, enabledRules: config.sensitiveEnabledRules) {
+                if case .skipCapture = config.sensitivePolicy {
+                    return .sensitiveSkipped
+                }
+                item.isSensitive = true
+                item.sensitiveKind = match.kind.rawValue
+            }
+            // One-time codes and magic links ask to be deleted after their
+            // next paste (see RestoreService hook in the app target).
+            if config.autoExpireOneTime, SensitiveDataDetector.looksLikeOneTimeSecret(text) {
+                item.expiresAfterUse = true
+            }
         }
 
         let id = store.insert(item)
