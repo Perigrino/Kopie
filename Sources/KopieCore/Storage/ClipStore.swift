@@ -212,6 +212,16 @@ public final class ClipStore {
     private static let cols =
         "id,kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text"
 
+    /// History ordering, newest first, behind the pinned-first prefixes.
+    ///
+    /// Deliberately keyed on `created_at` (with `id` breaking ties) rather than
+    /// `last_accessed_at`: copy-back stamps that column, so ordering by it moved
+    /// the row the user had just clicked to the top and reshuffled the list under
+    /// the cursor — a freshly selected row then looked like it refused to select.
+    /// `last_accessed_at` is still recorded and exported; it just no longer
+    /// drives the list. Pinning (an explicit user action) still reorders.
+    private static let listOrder = "created_at DESC, id DESC"
+
     private func map(_ r: [Any?]) -> ClipboardItem {
         ClipboardItem(
             id: r[0] as? Int64 ?? 0,
@@ -261,7 +271,7 @@ public final class ClipStore {
         // No index available (no key, or query shorter than a trigram): fetch a
         // generous window and filter in memory after decryption.
         let limit = f.textQuery.isEmpty ? f.limit : max(f.limit, 1000)
-        let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY is_pinned DESC, pinned_at DESC, last_accessed_at DESC, id DESC LIMIT ?"
+        let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY is_pinned DESC, pinned_at DESC, \(Self.listOrder) LIMIT ?"
         params.append(limit)
         let rows = (try? db.rows(sql, params)) ?? []
         var items = rows.map { map($0) }
@@ -305,7 +315,7 @@ public final class ClipStore {
 
         let sql = "SELECT \(Self.cols) FROM clipboard_items " +
                   "WHERE \(whereC.joined(separator: " AND ")) " +
-                  "ORDER BY is_pinned DESC, pinned_at DESC, last_accessed_at DESC, id DESC LIMIT ?"
+                  "ORDER BY is_pinned DESC, pinned_at DESC, \(Self.listOrder) LIMIT ?"
         params.append(max(f.limit, 1000))
         let rows = (try? db.rows(sql, params)) ?? []
         var items = rows.map { map($0) }
