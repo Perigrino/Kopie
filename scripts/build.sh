@@ -35,7 +35,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key><string>Kopie</string>
   <key>CFBundleIdentifier</key><string>com.kopie.app</string>
   <key>CFBundleVersion</key><string>1</string>
-  <key>CFBundleShortVersionString</key><string>2.3.0</string>
+  <key>CFBundleShortVersionString</key><string>2.4.0</string>
   <key>CFBundleExecutable</key><string>Kopie</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
