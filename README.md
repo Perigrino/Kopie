@@ -3,11 +3,12 @@
 Native macOS clipboard manager — menu-bar first, fast, local-only.
 Copy something, find it later, paste it back.
 
-## Design principles
+## Why Kopie?
 
 - **Private by design** — your clipboard never leaves your Mac. No cloud, no accounts, no telemetry.
 - **Fast** — menu-bar and keyboard first, opens instantly, searches as you type.
 - **Native** — Swift + SwiftUI, no third-party dependencies.
+- **Open source** — the whole app is public on [GitHub](https://github.com/Perigrino/Kopie). Read the code, verify exactly what it does with your clipboard, and contribute.
 
 ## Features
 
