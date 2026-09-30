@@ -26,7 +26,18 @@ struct DetailsPanel: View {
             // Switching items discards any unsaved edit.
             draftText = nil
             savedRecently = false
+            showRichText = defaultFormattedTab
         }
+        .onAppear {
+            showRichText = defaultFormattedTab
+        }
+    }
+
+    /// Items open on the Formatted tab only when they have something to show
+    /// there (stored rich text or detected code); plain text opens on the
+    /// Plain Text tab instead of a "No rich text" dead end.
+    private var defaultFormattedTab: Bool {
+        item.isRichText || codeLanguage != .plainText
     }
 
     /// Detected language/format for the Formatted tab, based on the item text.
