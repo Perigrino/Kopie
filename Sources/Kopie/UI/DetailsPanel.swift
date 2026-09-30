@@ -164,27 +164,88 @@ struct DetailsPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(item.filePaths ?? [], id: \.self) { path in
-                        HStack(spacing: 8) {
-                            Image(systemName: "doc")
-                                .foregroundStyle(.secondary)
-                            Text(path)
-                                .font(.body.monospaced())
-                                .textSelection(.enabled)
-                        }
+                        FileDetailRow(path: path)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else if let img = state.fullImage(for: item) ?? state.thumbnail(for: item) {
-            ScrollView([.horizontal, .vertical]) {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
+        } else if item.kind == .image {
+            DetailsImage(item: item)
         } else {
             EmptyStateView(symbol: "photo", title: "Image unavailable", message: "The image file could not be loaded.")
+        }
+    }
+
+    /// Full-resolution image preview for an image item: the thumbnail (or a
+    /// loading spinner) paints first, the full image swaps in when loaded.
+    private struct DetailsImage: View {
+        @EnvironmentObject var state: AppState
+        let item: ClipboardItem
+        @State private var full: NSImage?
+
+        var body: some View {
+            ScrollView([.horizontal, .vertical]) {
+                Group {
+                    if let full {
+                        Image(nsImage: full).resizable()
+                    } else if let thumb = state.thumbnail(for: item) {
+                        Image(nsImage: thumb).resizable()
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 160)
+                    }
+                }
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .task(id: item.id) {
+                full = nil
+                // Deferred one runloop tick so the placeholder paints first.
+                await Task.yield()
+                full = state.fullImage(for: item)
+            }
+        }
+    }
+
+    /// One file path in a file item's list — image files show a live preview,
+    /// everything else the path with a doc icon.
+    private struct FileDetailRow: View {
+        let path: String
+        @State private var image: NSImage?
+
+        private static let imageExtensions: Set<String> =
+            ["png", "jpg", "jpeg", "gif", "heic", "tiff", "tif", "bmp", "webp"]
+
+        private var isImageFile: Bool {
+            Self.imageExtensions.contains((path as NSString).pathExtension.lowercased())
+        }
+
+        var body: some View {
+            HStack(spacing: 8) {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else {
+                    Image(systemName: isImageFile ? "photo" : "doc")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32)
+                }
+                Text(path)
+                    .font(.body.monospaced())
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .task(id: path) {
+                guard isImageFile, image == nil else { return }
+                // Small file read; deferring to .task keeps it out of body
+                // evaluation so the row paints its icon first.
+                image = NSImage(contentsOfFile: path)
+            }
         }
     }
 
