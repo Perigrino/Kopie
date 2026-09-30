@@ -36,6 +36,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let ocrImages = "ocrImages"
         public static let pasteDirect = "pasteDirect"
         public static let pasteAsPlainText = "pasteAsPlainText"
+        public static let pasteQueueIDs = "pasteQueueIDs"
         public static let splitPosition = "splitPosition"
     }
 
@@ -315,6 +316,29 @@ public final class SettingsStore: @unchecked Sendable {
     public var pasteAsPlainText: Bool {
         get { defaults.object(forKey: Keys.pasteAsPlainText) as? Bool ?? false }
         set { defaults.set(newValue, forKey: Keys.pasteAsPlainText) }
+    }
+
+    /// Item IDs queued for sequential pasting, in order. Survives launches so
+    /// a queue built yesterday still pastes today.
+    public var pasteQueueIDs: [Int64] {
+        get {
+            // New writes are JSON Data; legacy array-style values still read.
+            if let data = defaults.data(forKey: Keys.pasteQueueIDs),
+               let arr = try? JSONDecoder().decode([Int64].self, from: data) {
+                return arr
+            }
+            if let arr = defaults.array(forKey: Keys.pasteQueueIDs) as? [Int] {
+                return arr.map(Int64.init)
+            }
+            return []
+        }
+        set {
+            if newValue.isEmpty {
+                defaults.removeObject(forKey: Keys.pasteQueueIDs)
+            } else if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: Keys.pasteQueueIDs)
+            }
+        }
     }
 
     /// Stores the horizontal split position (0…1) of the main view's list/detail divider.

@@ -10,6 +10,9 @@ struct ContextMenuBuilder: View {
     var onPin: () -> Void
     /// Copies the item staging only the plain-text flavor (strips RTF/HTML).
     var onCopyPlainText: (() -> Void)? = nil
+    /// Adds/removes the item from the sequential paste queue.
+    var onToggleQueue: (() -> Void)? = nil
+    var isQueued: Bool = false
     
     var body: some View {
         // Primary actions
@@ -21,6 +24,13 @@ struct ContextMenuBuilder: View {
         if let onCopyPlainText, item.kind == .text, item.isRichText {
             Button(action: onCopyPlainText) {
                 Label("Copy as Plain Text", systemImage: "text.format")
+            }
+        }
+
+        if let onToggleQueue {
+            Button(action: onToggleQueue) {
+                Label(isQueued ? "Remove from Paste Queue" : "Add to Paste Queue",
+                      systemImage: isQueued ? "minus.circle" : "list.number")
             }
         }
 

@@ -154,6 +154,8 @@ struct PopoverView: View {
                                            onFavorite: { state.toggleFavorite(item) },
                                            onPin: { state.togglePin(item) },
                                            onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
+                                           onToggleQueue: { state.toggleQueued(item) },
+                                           isQueued: state.isQueuedForPaste(item),
                                            onToggleSelect: { toggleSelect(item.id) },
                                            onHoverChange: { hovering in
                                                previewID = hovering ? item.id : (previewID == item.id ? nil : previewID)

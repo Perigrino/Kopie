@@ -224,6 +224,78 @@ final class AppState: ObservableObject {
         guard store.updateText(item.id, newText) else { return }
         refresh()
     }
+    // MARK: - Sequential paste queue
+
+    /// Builds the queue from one or more items (order preserved as given).
+    func enqueueForPaste(_ items: [ClipboardItem]) {
+        let ids = items.map(\.id)
+        guard !ids.isEmpty else { return }
+        settings.pasteQueueIDs = (settings.pasteQueueIDs + ids).suffix(50)
+    }
+
+    /// Adds a single item to the paste queue.
+    func enqueueForPaste(_ item: ClipboardItem) { enqueueForPaste([item]) }
+
+    /// True when the item is waiting somewhere in the paste queue.
+    func isQueuedForPaste(_ item: ClipboardItem) -> Bool {
+        settings.pasteQueueIDs.contains(item.id)
+    }
+
+    /// Number of items still waiting in the paste queue.
+    var pasteQueueCount: Int { settings.pasteQueueIDs.count }
+
+    /// Stages the next queued item on the clipboard and simulates ⌘V in the
+    /// frontmost app (if direct paste is enabled and permitted). Pops the item
+    /// from the queue before pasting so a failed paste never loops.
+    @discardableResult
+    func pasteNextFromQueue() -> ClipboardItem? {
+        var queue = settings.pasteQueueIDs
+        guard let id = queue.first else { return nil }
+        queue.removeFirst()
+        settings.pasteQueueIDs = queue
+        guard let item = store.get(id) else {
+            // Queued item was deleted meanwhile — try the next one.
+            return queue.isEmpty ? nil : pasteNextFromQueue()
+        }
+        copyBack(item)
+        // Simulate ⌘V so the staged item lands in the frontmost app. Short
+        // delay lets the target app process the pasteboard change. No
+        // permission prompt from here — the item simply stays staged.
+        if SettingsStore.shared.pasteDirect {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                _ = PasteDirectService.paste()
+            }
+        }
+        return item
+    }
+
+    /// Drops everything waiting in the paste queue.
+    func clearPasteQueue() { settings.pasteQueueIDs = [] }
+
+    /// Newest item regardless of the UI's current search text (intent support).
+    func latestItem() -> ClipboardItem? {
+        store.query(QueryFilter()).first
+    }
+
+    /// Search used by the App Intents surface: substring search with the
+    /// store's encrypted index when available.
+    func searchItems(query: String, limit: Int) -> [ClipboardItem] {
+        var f = QueryFilter()
+        f.textQuery = query
+        f.limit = limit
+        if !query.isEmpty { f.useRegex = query.isValidRegex }
+        return store.query(f)
+    }
+
+    /// Context-menu convenience: toggles the item's presence in the queue.
+    func toggleQueued(_ item: ClipboardItem) {
+        if isQueuedForPaste(item) {
+            settings.pasteQueueIDs = settings.pasteQueueIDs.filter { $0 != item.id }
+        } else {
+            enqueueForPaste(item)
+        }
+    }
+
     func toggleFavorite(_ item: ClipboardItem) { store.setFavorite(item.id, !item.isFavorite); refresh() }
     func togglePin(_ item: ClipboardItem) { store.setPinned(item.id, !item.isPinned); refresh() }
     func remove(_ item: ClipboardItem) { remove([item.id]) }

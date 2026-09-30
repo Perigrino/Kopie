@@ -157,4 +157,18 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(s.excludedAppIDs, ["com.new", "com.other"])
         XCTAssertEqual(s.excludedApps.count, 2)
     }
+
+    // MARK: - Paste queue
+
+    func test_pasteQueue_roundTripsAndClears() {
+        let s = store()
+        XCTAssertEqual(s.pasteQueueIDs, [])
+        s.pasteQueueIDs = [3, 1, 2]
+        XCTAssertEqual(store().pasteQueueIDs, [3, 1, 2])
+        s.pasteQueueIDs = []
+        XCTAssertEqual(store().pasteQueueIDs, [])
+        // Removing the key entirely also reads as empty.
+        s.pasteQueueIDs = [7]
+        XCTAssertEqual(store().pasteQueueIDs, [7])
+    }
 }

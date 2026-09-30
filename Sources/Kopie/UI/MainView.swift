@@ -172,6 +172,8 @@ struct MainView: View {
                                        onFavorite: { state.toggleFavorite(item) },
                                        onPin: { state.togglePin(item) },
                                        onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
+                                       onToggleQueue: { state.toggleQueued(item) },
+                                       isQueued: state.isQueuedForPaste(item),
                                        copyOnTap: false)
                                 .tag(item.id)
                                 .onDrag {

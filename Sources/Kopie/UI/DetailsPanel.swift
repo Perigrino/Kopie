@@ -274,6 +274,16 @@ struct DetailsPanel: View {
             
             Spacer()
             
+            if state.isQueuedForPaste(item) {
+                Button {
+                    state.toggleQueued(item)
+                } label: {
+                    Label("Queued \(state.pasteQueueCount)", systemImage: "list.number")
+                }
+                .buttonStyle(.bordered)
+                .help("Remove from paste queue")
+            }
+            
             Button(role: .destructive) {
                 state.remove(item)
             } label: {
