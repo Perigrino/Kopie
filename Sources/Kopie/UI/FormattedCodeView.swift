@@ -3,9 +3,10 @@ import AppKit
 import KopieCore
 
 /// A universal formatted viewer. Detects the content's language, safely formats
-/// it when possible, applies syntax highlighting, and renders it in a compact
-/// developer-card: language badge + line count + copy button in a fixed header,
-/// and line-numbered, non-wrapping, both-axis scrolling code below.
+/// it when possible, applies syntax highlighting, and renders it as a dark
+/// code-block card (GitHub/IDE style): near-black surface, syntax-coloured
+/// monospace text and a dim line-number gutter — always dark, in both light
+/// and dark appearance, so code always reads like code.
 struct FormattedCodeView: View {
     let content: String
     let language: CodeLanguage
@@ -19,9 +20,11 @@ struct FormattedCodeView: View {
     private static let highlightCache = NSCache<NSString, NSArray>()
 
     private var formatted: String { CodeFormatter.format(content, language: language) }
-    private var theme: SyntaxHighlighter.Theme { colorScheme == .dark ? SyntaxHighlighter.dark : SyntaxHighlighter.light }
+    // The code block is always dark (like GitHub's code cards), so highlighting
+    // always uses the dark theme regardless of the app's appearance.
+    private var theme: SyntaxHighlighter.Theme { SyntaxHighlighter.dark }
     private var lines: [NSAttributedString] {
-        let key = "\(formatted)\u{1}\(language.rawValue)\u{1}\(colorScheme == .dark ? 1 : 0)" as NSString
+        let key = "\(formatted)\u{1}\(language.rawValue)" as NSString
         if let cached = Self.highlightCache.object(forKey: key) as? [NSAttributedString] { return cached }
         let computed = SyntaxHighlighter.highlightedLines(formatted, language: language, theme: theme)
         Self.highlightCache.setObject(computed as NSArray, forKey: key)
@@ -29,9 +32,10 @@ struct FormattedCodeView: View {
     }
     private var lineCount: Int { max(formatted.split(separator: "\n", omittingEmptySubsequences: false).count, 1) }
 
-    /// Adaptive card surface that reads well in both light and dark mode.
-    private var surfaceColor: Color { colorScheme == .dark ? Color(nsColor: .windowBackgroundColor) : Color(nsColor: .controlBackgroundColor) }
-    private var fg: Color { colorScheme == .dark ? Color(nsColor: .labelColor) : Color(nsColor: .secondaryLabelColor) }
+    // Fixed dark code-block palette (independent of appearance).
+    private var surfaceColor: Color { Color(red: 0.118, green: 0.118, blue: 0.125) } // ~#1E1E20
+    private var fg: Color { Color(red: 0.83, green: 0.83, blue: 0.84) }              // ~#D4D4D6
+    private var gutterColor: Color { Color(red: 0.43, green: 0.46, blue: 0.51) }     // ~#6E7681
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -55,17 +59,17 @@ struct FormattedCodeView: View {
                     .foregroundStyle(fg)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(Capsule().fill(fg.opacity(0.12)))
+                    .background(Capsule().fill(Color.white.opacity(0.08)))
                 Text(language.displayName)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color(nsColor: .labelColor))
+                    .foregroundStyle(fg)
             }
 
             Spacer()
 
             Text("\(lineCount) line\(lineCount == 1 ? "" : "s")")
                 .font(.system(size: 11))
-                .foregroundStyle(fg)
+                .foregroundStyle(gutterColor)
 
             Button {
                 copy()
@@ -75,10 +79,10 @@ struct FormattedCodeView: View {
                     Text(copied ? "Copied" : "Copy")
                 }
                 .font(.system(size: 11))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color(red: 0.42, green: 0.62, blue: 1.0))
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor.opacity(0.4), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(red: 0.42, green: 0.62, blue: 1.0).opacity(0.45), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .help("Copy content")
@@ -94,19 +98,22 @@ struct FormattedCodeView: View {
         // Vertical scroll only so text wraps to the panel width (responsive).
         ScrollView(showsIndicators: true) {
             VStack(alignment: .leading, spacing: 0) {
-                // Each logical line is a row: a number gutter + the wrapping line.
-                // Wrapped continuation lines flow under the number's row.
+                // Each logical line is a row: a dim number gutter + the wrapping
+                // line. Wrapped continuation lines flow under the number's row.
                 ForEach(Array(lines.enumerated()), id: \.offset) { idx, line in
                     HStack(alignment: .top, spacing: 0) {
                         Text("\(idx + 1)")
-                            .font(.system(size: 12, weight: .regular, design: .monospaced))
-                            .foregroundStyle(fg.opacity(0.45))
+                            .font(.system(size: 11.5, weight: .regular, design: .monospaced))
+                            .foregroundStyle(gutterColor)
                             .frame(width: 30, alignment: .trailing)
-                            .padding(.trailing, 10)
-                            .padding(.vertical, 1)
+                            .padding(.trailing, 12)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.03))
                         Text(AttributedString(line))
+                            .lineSpacing(3)
                             .textSelection(.enabled)
-                            .padding(.vertical, 1)
+                            .padding(.leading, 12)
+                            .padding(.vertical, 2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
