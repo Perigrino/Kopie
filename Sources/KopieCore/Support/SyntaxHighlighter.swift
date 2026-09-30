@@ -1,25 +1,26 @@
 import AppKit
 import Foundation
-import KopieCore
 
 /// Tokenizing syntax highlighter. Produces an attributed string coloured for a
 /// given `CodeLanguage` and a light/dark theme. Deliberately simple: it favours
 /// reliable, cheap token patterns over a real parser, which is fine for
 /// clipboard-sized snippets and large responses.
-enum SyntaxHighlighter {
+public enum SyntaxHighlighter {
 
-    struct Theme {
-        let plain: NSColor
-        let keyword: NSColor
-        let string: NSColor
-        let number: NSColor
-        let comment: NSColor
-        let type: NSColor
-        let function: NSColor
-        let key: NSColor
+    /// Immutable color set for one appearance; `Sendable` so the shared
+    /// `dark`/`light` themes can be public statics.
+    public struct Theme: Sendable {
+        public let plain: NSColor
+        public let keyword: NSColor
+        public let string: NSColor
+        public let number: NSColor
+        public let comment: NSColor
+        public let type: NSColor
+        public let function: NSColor
+        public let key: NSColor
     }
 
-    static let dark = Theme(
+    public static let dark = Theme(
         plain:    NSColor(calibratedRed: 0.83, green: 0.83, blue: 0.83, alpha: 1), // #D4D4D4
         keyword:  NSColor(calibratedRed: 0.77, green: 0.52, blue: 0.75, alpha: 1), // #C586C0
         string:   NSColor(calibratedRed: 0.81, green: 0.57, blue: 0.47, alpha: 1), // #CE9178
@@ -30,7 +31,7 @@ enum SyntaxHighlighter {
         key:      NSColor(calibratedRed: 0.55, green: 0.76, blue: 0.85, alpha: 1)  // #8CD4E0
     )
 
-    static let light = Theme(
+    public static let light = Theme(
         plain:    NSColor(calibratedRed: 0.22, green: 0.22, blue: 0.26, alpha: 1), // #383A42
         keyword:  NSColor(calibratedRed: 0.65, green: 0.15, blue: 0.64, alpha: 1), // #A626A4
         string:   NSColor(calibratedRed: 0.31, green: 0.60, blue: 0.31, alpha: 1), // #50A14F
@@ -43,7 +44,15 @@ enum SyntaxHighlighter {
 
     // MARK: - Public
 
-    static func highlight(_ text: String, language: CodeLanguage, theme: Theme) -> NSAttributedString {
+    /// Tokenizes `text` for `language`, colouring each match.
+    ///
+    /// Every token pattern in `tokens(for:theme:)` MUST contribute exactly one
+    /// capture group: the parts are concatenated into a single alternation and
+    /// the match's group index is mapped back to the owning part by position
+    /// (`parts[idx - 1]`). A pattern with an extra group shifts that mapping and
+    /// silently mis-colours every later token kind, so `assertTokenGroups` fails
+    /// the build instead. Use non-capturing `(?:…)` for any inner group.
+    public static func highlight(_ text: String, language: CodeLanguage, theme: Theme) -> NSAttributedString {
         let out = NSMutableAttributedString(string: text)
         let full = NSRange(0..<(text as NSString).length)
         out.addAttributes([
@@ -53,6 +62,7 @@ enum SyntaxHighlighter {
 
         let parts = tokens(for: language, theme: theme)
         guard !parts.isEmpty, !text.isEmpty else { return out }
+        assertTokenGroups(parts, language: language)
         let pattern = parts.map { "(\($0.pattern))" }.joined(separator: "|")
         guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return out }
 
@@ -66,9 +76,28 @@ enum SyntaxHighlighter {
         return out
     }
 
+    /// Precondition for `highlight`'s positional group mapping: exactly one
+    /// capture group per token part, in the same order as `parts`.
+    private static func assertTokenGroups(
+        _ parts: [(pattern: String, color: NSColor)], language: CodeLanguage
+    ) {
+        for part in parts {
+            let count = (try? NSRegularExpression(pattern: part.pattern).numberOfCaptureGroups) ?? 0
+            precondition(count == 0,
+                         "\(language.rawValue) token pattern contributes \(count) capture groups; "
+                         + "each part must add exactly one — use (?:…) for inner groups")
+        }
+    }
+
+    /// The raw token patterns for `language`, for tests that assert the
+    /// one-capture-group-per-part invariant `highlight` relies on.
+    public static func tokenPatternsForTesting(language: CodeLanguage) -> [(pattern: String, color: NSColor)] {
+        tokens(for: language, theme: dark)
+    }
+
     /// Splits a highlighted string into per-line attributed strings so a view can
     /// render a numbered gutter aligned exactly with each line.
-    static func highlightedLines(_ text: String, language: CodeLanguage, theme: Theme) -> [NSAttributedString] {
+    public static func highlightedLines(_ text: String, language: CodeLanguage, theme: Theme) -> [NSAttributedString] {
         let highlighted = highlight(text, language: language, theme: theme)
         let src = highlighted.string as NSString
         guard src.length > 0 else { return [] }
@@ -96,7 +125,7 @@ enum SyntaxHighlighter {
             p.append(("\"(?:\\\\.|[^\"\\\\])*\"(?=\\s*:)", theme.key))
             p.append(("\"(?:\\\\.|[^\"\\\\])*\"", theme.string))
             p.append(("-?\\b\\d(?:[\\d.]|e[+-]?\\d+)*\\b", theme.number))
-            p.append(("\\b(true|false|null)\\b", theme.keyword))
+            p.append(("\\b(?:true|false|null)\\b", theme.keyword))
         case .html, .xml:
             if language == .xml { p.append(("<\\?xml[^>]*\\?>", theme.comment)) }
             p.append(("<!--[\\s\\S]*?-->", theme.comment))
@@ -111,13 +140,15 @@ enum SyntaxHighlighter {
             p.append(("\\b\\d+(?:\\.\\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg)?\\b", theme.number))
         case .yaml:
             p.append(("^[\\s-]*[A-Za-z0-9_.\\-/]+(?=\\s*:)", theme.key))
-            p.append(("(^|\\s)#[^\\n]*", theme.comment))
+            p.append(("(?:^|\\s)#[^\\n]*", theme.comment))
             p.append(("\"[^\"]*\"|'[^']*'", theme.string))
             p.append(("\\b\\d+(?:\\.\\d+)?\\b", theme.number))
         case .markdown:
             p.append(("^#{1,6}\\s+.*$", theme.type))
             p.append(("\\*\\*[^*]+\\*\\*|__[^_]+__", theme.keyword))
-            p.append(("\\[([^\\]]+)\\]\\([^)]*\\)", theme.function))
+            // Non-capturing inner group: every token pattern must contribute
+            // exactly ONE capture group (see `highlight`'s index mapping).
+            p.append(("\\[(?:[^\\]]+)\\]\\([^)]*\\)", theme.function))
             p.append(("`[^`]+`", theme.string))
         case .sql:
             p.append(("--[^\\n]*|/\\*[\\s\\S]*?\\*/", theme.comment))
@@ -156,7 +187,7 @@ enum SyntaxHighlighter {
         } else if language == .csharp {
             p.append(("(?:\\$\"?)\"(?:\\\\.|[^\"\\\\])*\"", theme.string))
         } else if language == .swift {
-            p.append(("\"([^\"]|\\\\.)*\"", theme.string))
+            p.append(("\"(?:[^\"]|\\\\.)*\"", theme.string))
         } else {
             p.append(("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'", theme.string))
         }
