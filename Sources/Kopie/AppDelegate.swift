@@ -36,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: PopoverView().environmentObject(state))
+        // One-time registration so the popover's event handlers can tell
+        // which window an event belongs to (see GlobalActions.isPopoverKeyEvent).
+        GlobalActions.bindPopover(popover)
 
         previewPanel = PreviewPanelController(state: state)
         previewPanel.popover = popover
@@ -47,9 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return win.frame.contains(loc)
         }
 
-        GlobalActions.openMain = { [weak self] in self?.showMainWindow() }
-        GlobalActions.openSettings = { [weak self] in self?.showSettings() }
-        GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding() }
+        // Opening any app window closes the popover first. The popover's
+        // local event monitors see the whole process, so leaving it "open"
+        // while another window takes focus left stale keyboard state pointed
+        // at the popover — arrows/clicks in the main window were visibly
+        // routed to the menu-bar list instead.
+        GlobalActions.openMain = { [weak self] in self?.showMainWindow(closePopover: true) }
+        GlobalActions.openSettings = { [weak self] in self?.showSettings(closePopover: true) }
+        GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding(closePopover: true) }
         GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
         GlobalActions.showPreview = { [weak self] item, y in self?.previewPanel.preview(item, rowY: y) }
         GlobalActions.movePreview = { [weak self] item, y in self?.previewPanel.move(item, rowY: y) }
@@ -90,7 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Windows
 
-    func showMainWindow() {
+    func showMainWindow(closePopover: Bool = false) {
+        if closePopover { popover?.performClose(nil) }
         if mainWindow == nil {
             let hosting = NSHostingController(rootView: MainView().environmentObject(state))
             let win = NSWindow(contentViewController: hosting)
@@ -105,7 +114,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func showSettings() {
+    func showSettings(closePopover: Bool = false) {
+        if closePopover { popover?.performClose(nil) }
         if settingsWindow == nil {
             let hosting = NSHostingController(rootView: SettingsView().environmentObject(state))
             let win = NSWindow(contentViewController: hosting)
@@ -120,7 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func showOnboarding() {
+    func showOnboarding(closePopover: Bool = false) {
+        if closePopover { popover?.performClose(nil) }
         if onboardingWindow == nil {
             let hosting = NSHostingController(rootView: OnboardingView().environmentObject(state))
             let win = NSWindow(contentViewController: hosting)

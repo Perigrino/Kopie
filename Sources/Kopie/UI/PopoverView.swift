@@ -16,7 +16,7 @@ struct PopoverView: View {
     /// True while Control is held: the next copy stages plain text only,
     /// stripping rich text (paste-as-plain-text one-shot override).
     @State private var controlHeld = false
-    @State private var flagsMonitor: Any?
+    @State private var flagsMonitor: GatedEventMonitor?
     /// Item whose preview bubble we last requested — lets row-frame updates
     /// re-anchor the (externally owned) bubble while the list scrolls.
     @State private var activePreviewID: Int64?
@@ -36,17 +36,27 @@ struct PopoverView: View {
         }
         .frame(width: 440)
         .coordinateSpace(name: Self.rootSpace)
-        .onAppear {
-            state.refresh()
-            DispatchQueue.main.async { searchFocused = true }
-            highlightedIndex = state.items.isEmpty ? nil : 0
-        }
         .onChange(of: state.searchText) { _ in
             state.refresh()
             highlightedIndex = state.items.isEmpty ? nil : 0
         }
-        .onAppear { installKeyMonitor(); installFlagsMonitor() }
+        .onAppear {
+            state.refresh()
+            DispatchQueue.main.async { searchFocused = true }
+            highlightedIndex = state.items.isEmpty ? nil : 0
+            // Re-install safely: SwiftUI can call onAppear again while
+            // monitors are live (sheet presentation, host-window reuse). The
+            // old install path stacked a second monitor pair on top of the
+            // first — a leaked pair that outlived the view and kept acting on
+            // the popover's list from anywhere in the app.
+            if keyMonitor == nil { installKeyMonitor() }
+            if flagsMonitor == nil { installFlagsMonitor() }
+        }
         .onDisappear {
+            // Always unwind both monitors together — onDisappear does not
+            // fire on app termination (and NSPopover's transient teardown can
+            // skip it entirely). A leaked monitor was the other half of the
+            // "main view dead, menu-bar list moves instead" bug.
             removeKeyMonitor(); removeFlagsMonitor()
             activePreviewID = nil
             GlobalActions.clearPreview?(0)
@@ -400,55 +410,68 @@ struct PopoverView: View {
 
     // MARK: - macOS 13 keyboard handling
 
-    @State private var keyMonitor: Any?
+    @State private var keyMonitor: GatedEventMonitor?
 
     private func installKeyMonitor() {
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let option = event.modifierFlags.contains(.option)
-            switch event.keyCode {
-            case 126: moveHighlight(-1); return nil   // up arrow
-            case 125: moveHighlight(1); return nil     // down arrow
-            case 36:                                   // return
-                if option { MainActor.assumeIsolated { copyAndPasteHighlighted() } }
-                else { copyHighlighted() }
-                return nil
-            case 53:  handleEscape(); return nil       // escape
-            case 51:  handleDelete(); return event     // delete (pass through if nothing to delete)
-            case 18, 19, 20, 21, 23, 22, 26, 28, 25:   // ⌥1…⌥9 quick-select
-                if option {
-                    let digits = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
-                    if let n = digits[Int(event.keyCode)] {
-                        MainActor.assumeIsolated { quickSelect(n) }
-                        return nil
-                    }
+        // Local keyDown monitors fire for the whole process — not just the
+        // popover. GatedEventMonitor makes the window gate mandatory: only
+        // events belonging to the popover's own shown window reach the
+        // handler; keys meant for the main window (or settings) pass through
+        // untouched, so the popover can never again eat the main view's
+        // navigation.
+        keyMonitor = GatedEventMonitor(
+            for: .keyDown,
+            accepts: { GlobalActions.isPopoverKeyEvent($0) },
+            handle: { handleKeyDown($0) })
+    }
+
+    /// Key mapping for one popover-owned keyDown (the monitor has already
+    /// gated it to the popover's window). Returns true to consume.
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        switch event.keyCode {
+        case 126: moveHighlight(-1); return true   // up arrow
+        case 125: moveHighlight(1); return true    // down arrow
+        case 36:                                   // return
+            if event.modifierFlags.contains(.option) { copyAndPasteHighlighted() } else { copyHighlighted() }
+            return true
+        case 53:  handleEscape(); return true      // escape
+        case 51:  return handleDelete()            // delete
+        case 18, 19, 20, 21, 23, 22, 26, 28, 25:   // ⌥1…⌥9 quick-select
+            if event.modifierFlags.contains(.option) {
+                let digits = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
+                if let n = digits[Int(event.keyCode)] {
+                    quickSelect(n)
+                    return true
                 }
-                return event
-            default:  return event
             }
+            return false
+        default:  return false
         }
     }
 
     private func removeKeyMonitor() {
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
-        }
+        keyMonitor?.remove()
+        keyMonitor = nil
     }
 
     /// Tracks the Control key so a copy can be forced to plain text
     /// (hold ⌃ while clicking/pressing return — paste-as-plain-text).
     private func installFlagsMonitor() {
-        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            MainActor.assumeIsolated { controlHeld = event.modifierFlags.contains(.control) }
-            return event
-        }
+        // Same gate as the key monitor: modifier changes in other windows
+        // must not mutate the popover's ⌃-state. Never consumes.
+        flagsMonitor = GatedEventMonitor(
+            for: .flagsChanged,
+            accepts: { GlobalActions.isPopoverKeyEvent($0) },
+            handle: { syncControlFlag($0); return false })
+    }
+
+    private func syncControlFlag(_ event: NSEvent) {
+        controlHeld = event.modifierFlags.contains(.control)
     }
 
     private func removeFlagsMonitor() {
-        if let monitor = flagsMonitor {
-            NSEvent.removeMonitor(monitor)
-            flagsMonitor = nil
-        }
+        flagsMonitor?.remove()
+        flagsMonitor = nil
     }
 
     private func handleEscape() {
@@ -460,10 +483,16 @@ struct PopoverView: View {
         }
     }
 
-    private func handleDelete() {
+    /// Removes the highlighted row. Returns true when a row was removed
+    /// (event swallowed); with no highlighted row (empty or search-drained
+    /// list) the event passes through so the search field still sees text.
+    @discardableResult
+    private func handleDelete() -> Bool {
         if let idx = highlightedIndex, state.items.indices.contains(idx) {
             state.remove(state.items[idx])
             highlightedIndex = min(idx, state.items.count - 1)
+            return true
         }
+        return false
     }
 }

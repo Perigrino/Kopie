@@ -20,7 +20,7 @@ extension HotKeySpec {
 struct HotKeyRecorder: View {
     @State private var recording = false
     @State private var errorMessage: String?
-    @State private var monitor: Any?
+    @State private var monitor: GatedEventMonitor?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -29,14 +29,15 @@ struct HotKeyRecorder: View {
                 else {
                     recording = true
                     errorMessage = nil
-                    monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                        if event.keyCode == 53 { // Esc cancels
-                            stopRecording()
-                            return nil
-                        }
-                        handle(event)
-                        return nil
-                    }
+                    // Capture the window now, while the click that armed us
+                    // has made it key — this is the window whose keys we own.
+                    // GatedEventMonitor enforces the gate; keys meant for any
+                    // other window pass through untouched.
+                    let win = NSApp.keyWindow
+                    monitor = GatedEventMonitor(
+                        for: .keyDown,
+                        accepts: { $0.window === win },
+                        handle: { handleWhileRecording($0) })
                 }
             } label: {
                 Text(recording ? "Press a key… (Esc to cancel)" : (SettingsStore.shared.hotkey.label))
@@ -50,10 +51,31 @@ struct HotKeyRecorder: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        // Recording is a modal UI state owned by this view instance: unwind
+        // the process-wide monitor when the view goes away (settings window
+        // closed, tab switched, app quitting) — previously a monitor left
+        // recording kept consuming every keystroke in the whole app and could
+        // still rebind the global hotkey.
+        .onDisappear {
+            if recording { stopRecording() }
+        }
+    }
+
+    /// Capture mapping for one recorder-owned keyDown (the monitor has
+    /// already gated it to the recording window). The `recording` guard
+    /// covers the gap between stopping and the monitor's removal.
+    private func handleWhileRecording(_ event: NSEvent) -> Bool {
+        guard recording else { return false }
+        if event.keyCode == 53 { // Esc cancels
+            stopRecording()
+            return true
+        }
+        handle(event)
+        return true
     }
 
     private func stopRecording() {
-        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor?.remove()
         monitor = nil
         recording = false
     }
