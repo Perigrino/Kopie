@@ -24,15 +24,33 @@ public protocol HistoryCrypto {
 
 /// Selects the crypto used by default for at-rest storage. A caller may pass an
 /// explicit `HistoryCrypto`; when none is passed, this picks the Keychain-backed
-/// implementation — unless `KOPIE_DISABLE_ENCRYPTION=1`, which forces plaintext
-/// mode. The headless smoke / acceptance harness sets that so it never blocks on
-/// Keychain access (running a signed binary from a terminal can wait on a keychain
+/// implementation — unless the test harness opts out with
+/// `KOPIE_DISABLE_ENCRYPTION=1`, which forces plaintext mode. The headless smoke
+/// / acceptance harness sets that so it never blocks on Keychain access
+/// (running a signed binary from a terminal can wait on a keychain
 /// authorization dialog that never resolves).
+///
+/// The opt-out is honored only together with `KOPIE_STORAGE_DIR` (an isolated
+/// test store). `open` forwards its caller's environment to GUI apps, so a dev
+/// shell that exported the flag for the acceptance run would otherwise leak it
+/// into the real app — which then reads the key-protected history as raw
+/// `enc:v1:` ciphertext (gibberish) and can't decode encrypted images.
 public enum CryptoSelection {
     public static func resolve(_ explicit: HistoryCrypto?) -> HistoryCrypto? {
         if let explicit { return explicit }
-        if ProcessInfo.processInfo.environment["KOPIE_DISABLE_ENCRYPTION"] == "1" { return nil }
+        if plaintextOverride(in: ProcessInfo.processInfo.environment) {
+            FileHandle.standardError.write(Data(
+                "Kopie: KOPIE_DISABLE_ENCRYPTION honored (isolated test storage); running WITHOUT at-rest encryption.\n".utf8))
+            return nil
+        }
         return try? KeychainHistoryCrypto()
+    }
+
+    /// Plaintext mode is allowed only when storage is redirected to an
+    /// isolated directory — i.e. the smoke/acceptance harness, never the
+    /// user's real history.
+    public static func plaintextOverride(in env: [String: String]) -> Bool {
+        env["KOPIE_DISABLE_ENCRYPTION"] == "1" && !(env["KOPIE_STORAGE_DIR"] ?? "").isEmpty
     }
 }
 

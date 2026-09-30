@@ -35,4 +35,19 @@ final class HistoryCryptoTests: XCTestCase {
         // Malformed encrypted values fall back to the stored string, never crash.
         XCTAssertEqual(AtRestText.decode("enc:v1:!!!not-base64!!!", crypto: c), "enc:v1:!!!not-base64!!!")
     }
+
+    func test_plaintextOverrideRequiresIsolatedStorage() {
+        // Both set (acceptance harness): plaintext mode allowed.
+        XCTAssertTrue(CryptoSelection.plaintextOverride(in: [
+            "KOPIE_DISABLE_ENCRYPTION": "1",
+            "KOPIE_STORAGE_DIR": "/tmp/kopie-smoke"]))
+        // Disable flag alone (leaked into a GUI app launch): NOT honored —
+        // the real history must stay encrypted and readable.
+        XCTAssertFalse(CryptoSelection.plaintextOverride(in: [
+            "KOPIE_DISABLE_ENCRYPTION": "1"]))
+        // Storage redirect alone, or neither: encryption stays on.
+        XCTAssertFalse(CryptoSelection.plaintextOverride(in: [
+            "KOPIE_STORAGE_DIR": "/tmp/kopie-smoke"]))
+        XCTAssertFalse(CryptoSelection.plaintextOverride(in: [:]))
+    }
 }
