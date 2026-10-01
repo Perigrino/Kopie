@@ -184,9 +184,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if popover.isShown { popover.performClose(nil) }
         else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+            if let w = popover.contentViewController?.view.window { w.level = .popUpMenu; w.makeKey() }
             state.refresh()
         }
+    }
+
+    /// Invisible 1×1 window the hotkey popover anchors to; lives only while
+    /// the popover is shown.
+    private var cursorAnchor: NSWindow?
+
+    /// ⌘⇧V: opens the list at the cursor so it lands next to whatever the
+    /// user was just working in. Flips above the cursor near the screen
+    /// bottom, like a context menu.
+    func togglePopoverAtCursor() {
+        if popover.isShown { popover.performClose(nil); return }
+        let mouse = NSEvent.mouseLocation
+        let anchor = NSWindow(contentRect: NSRect(x: mouse.x, y: mouse.y, width: 1, height: 1),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        anchor.isOpaque = false
+        anchor.backgroundColor = .clear
+        anchor.hasShadow = false
+        anchor.ignoresMouseEvents = true
+        anchor.isReleasedWhenClosed = false
+        anchor.orderFront(nil)
+        cursorAnchor?.close()
+        cursorAnchor = anchor
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        let edge: NSRectEdge = (mouse.y - popover.contentSize.height < (screen?.visibleFrame.minY ?? 0))
+            ? .maxY : .minY
+        popover.show(relativeTo: NSRect(x: 0, y: 0, width: 1, height: 1),
+                     of: anchor.contentView!, preferredEdge: edge)
+        if let w = popover.contentViewController?.view.window { w.level = .popUpMenu; w.makeKey() }
+        state.refresh()
     }
 
     /// Left-click toggles the popover; right-click shows a small menu with Quit.
@@ -297,6 +326,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        cursorAnchor?.close()
+        cursorAnchor = nil
         previewPanel?.popoverDidClose()
     }
 
@@ -321,7 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         exit(0)
     }
 
-    func showFromHotKey() { togglePopover() }
+    func showFromHotKey() { togglePopoverAtCursor() }
 
     // MARK: - Hotkey
 

@@ -324,14 +324,6 @@ struct PopoverView: View {
         }
     }
 
-    private func copyHighlighted() {
-        if let i = highlightedIndex, state.items.indices.contains(i) {
-            copy(state.items[i])
-        } else if let first = state.items.first {
-            copy(first)
-        }
-    }
-
     /// Copies the highlighted (or first) item, then simulates ⌘V in the
     /// frontmost app. Closes the popover first so the paste lands in the
     /// app underneath, not in Kopie.
@@ -425,9 +417,7 @@ struct PopoverView: View {
         switch event.keyCode {
         case 126: moveHighlight(-1); return true   // up arrow
         case 125: moveHighlight(1); return true    // down arrow
-        case 36:                                   // return
-            if event.modifierFlags.contains(.option) { copyAndPasteHighlighted() } else { copyHighlighted() }
-            return true
+        case 36:  copyAndPasteHighlighted(); return true // return
         case 53:  handleEscape(); return true      // escape
         case 51:  return handleDelete()            // delete
         case 18, 19, 20, 21, 23, 22, 26, 28, 25:   // ⌥1…⌥9 quick-select
