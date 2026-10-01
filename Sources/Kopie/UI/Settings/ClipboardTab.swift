@@ -12,22 +12,37 @@ struct SettingsClipboardTab: View {
 
     var body: some View {
         Form {
-            Toggle("Monitor clipboard", isOn: Binding(
-                get: { !state.isPaused },
-                set: { on in on ? state.startMonitoring() : state.pauseMonitoring() }))
-            Toggle("Save text", isOn: $saveText)
-            Toggle("Save images", isOn: $saveImages)
-            Toggle("Save copied files", isOn: $saveFiles)
-            Toggle("Ignore duplicates", isOn: $ignoreDuplicates)
-            Toggle("Recognize text in images (searchable)", isOn: $ocrImages)
+            Section {
+                Toggle("Monitor clipboard", isOn: Binding(
+                    get: { !state.isPaused },
+                    set: { on in on ? state.startMonitoring() : state.pauseMonitoring() }))
+                Toggle("Save text", isOn: $saveText)
+                Toggle("Save images", isOn: $saveImages)
+                Toggle("Save copied files", isOn: $saveFiles)
+            } header: {
+                Text("What to capture")
+            }
+            Section {
+                Toggle("Ignore duplicates", isOn: $ignoreDuplicates)
+                Text("Re-copying the same content moves it to the top and bumps its copy count instead of saving a second entry.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Toggle("Recognize text in images (searchable)", isOn: $ocrImages)
             Text("Runs entirely on your Mac. Screenshots become findable by the words inside them.")
                 .font(.caption).foregroundStyle(.secondary)
-            Stepper(value: $maxItems, in: 10...10000, step: 10) {
-                HStack {
-                    Text("Max items stored")
-                    Spacer()
-                    Text("\(maxItems)").monospacedDigit().foregroundStyle(.secondary)
+            } header: {
+                Text("Smart capture")
+            }
+            Section {
+                Stepper(value: $maxItems, in: 10...10000, step: 10) {
+                    HStack {
+                        Text("Max items stored")
+                        Spacer()
+                        Text("\(maxItems)").monospacedDigit().foregroundStyle(.secondary)
+                    }
                 }
+            } header: {
+                Text("History size")
             }
         }
         .formStyle(.grouped)

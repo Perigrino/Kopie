@@ -16,23 +16,54 @@ struct SettingsPrivacyTab: View {
                     .font(.caption).foregroundStyle(.secondary)
                 List {
                     ForEach(state.excludedApps) { app in
-                        HStack {
-                            Text(app.name.isEmpty ? app.id : app.name)
-                            Text(app.id).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 10) {
+                            Image(nsImage: AppIconResolver.icon(for: app.id, size: NSSize(width: 20, height: 20)))
+                                .frame(width: 20, height: 20)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(app.name.isEmpty ? app.id : app.name)
+                                Text(app.id).font(.caption).foregroundStyle(.secondary)
+                            }
                             Spacer()
                             Button {
                                 state.removeExcludedApp(id: app.id)
                             } label: {
-                                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.red.opacity(0.75))
                             }
                             .buttonStyle(.plain)
+                            .help("Stop ignoring \(app.name.isEmpty ? app.id : app.name)")
                         }
+                        .padding(.vertical, 2)
                     }
                 }
+                .listStyle(.inset)
                 .frame(minHeight: 120)
+                .overlay {
+                    if state.excludedApps.isEmpty {
+                        VStack(spacing: 6) {
+                            Image(systemName: "eye.slash")
+                                .font(.system(size: 22))
+                                .foregroundStyle(.tertiary)
+                            Text("Nothing is ignored yet")
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Text("Add apps whose copies you never want saved — password managers, private notes, anything sensitive.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: 320)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
                 HStack {
                     Button("Add Ignored App…") { showAddSheet = true }
                     Spacer()
+                    if !state.excludedApps.isEmpty {
+                        Text("\(state.excludedApps.count) app\(state.excludedApps.count == 1 ? "" : "s") ignored")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Divider()
                 Text("Sensitive data sentinel")
@@ -125,6 +156,8 @@ private struct AddExcludedAppSheet: View {
     @State private var manualName = ""
     @State private var manualBundleID = ""
     @State private var picked: NSRunningApplication?
+    /// Set when the user tries to add an app that is already ignored.
+    @State private var duplicateWarning: String?
 
     private var runningApps: [NSRunningApplication] {
         NSWorkspace.shared.runningApplications
@@ -135,10 +168,15 @@ private struct AddExcludedAppSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add Ignored App").font(.headline)
+            Text("Copies made while this app is frontmost are never saved to history.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Picker("Running app", selection: $picked) {
                 Text("Choose…").tag(NSRunningApplication?.none)
                 ForEach(runningApps, id: \.processIdentifier) { app in
-                    Text(app.localizedName ?? app.bundleIdentifier ?? "?").tag(NSRunningApplication?.some(app))
+                    Text(app.localizedName ?? app.bundleIdentifier ?? "?")
+                        .tag(NSRunningApplication?.some(app))
                 }
             }
             .onChange(of: picked) { app in
@@ -147,8 +185,22 @@ private struct AddExcludedAppSheet: View {
                     manualBundleID = app.bundleIdentifier ?? ""
                 }
             }
-            TextField("App name", text: $manualName)
-            TextField("Bundle identifier", text: $manualBundleID)
+            HStack(spacing: 10) {
+                if !manualBundleID.isEmpty {
+                    Image(nsImage: AppIconResolver.icon(for: manualBundleID, size: NSSize(width: 32, height: 32)))
+                        .frame(width: 32, height: 32)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("App name", text: $manualName)
+                    TextField("Bundle identifier", text: $manualBundleID)
+                        .font(.caption.monospaced())
+                }
+            }
+            if let duplicateWarning {
+                Label(duplicateWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -162,6 +214,13 @@ private struct AddExcludedAppSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 360)
+        .frame(width: 400)
+        .onAppear { duplicateWarning = nil }
+        .onChange(of: manualBundleID) { bundleID in
+            // Immediate feedback instead of a silently-ignored Add click.
+            duplicateWarning = SettingsStore.shared.excludedApps.contains { $0.id == bundleID }
+                ? "\(manualName.isEmpty ? bundleID : manualName) is already ignored."
+                : nil
+        }
     }
 }

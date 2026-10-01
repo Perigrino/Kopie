@@ -77,6 +77,12 @@ enum SelfTest {
             MainActor.assumeIsolated {
                 renderPopover(dark: args.contains("dark"))
             }
+        case "--smoke-render-settings":
+            // Renders a settings tab offscreen. Arg: tab name (general,
+            // clipboard, cleanup, privacy, storage, security).
+            MainActor.assumeIsolated {
+                renderSettings(tab: args.count > 1 ? args[1] : "privacy")
+            }
         case "--smoke-render-main":
             // Renders MainView (sidebar + list + detail) offscreen for
             // README screenshots. Honors KOPIE_STORAGE_DIR for demo stores.
@@ -135,6 +141,39 @@ enum SelfTest {
             print("WROTE \(out) \(png.count)B")
         }
         Self.writeWindowCapture(win, name: "kopie-render-\(item.id)\(dark ? "-dark" : "")")
+    }
+
+    /// Renders one Settings tab for visual verification.
+    @MainActor
+    private static func renderSettings(tab: String) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let state = AppState()
+        let view: AnyView
+        switch tab {
+        case "general": view = AnyView(SettingsGeneralTab())
+        case "clipboard": view = AnyView(SettingsClipboardTab())
+        case "cleanup": view = AnyView(SettingsCleanupTab())
+        case "storage": view = AnyView(SettingsStorageTab())
+        case "security": view = AnyView(SettingsSecurityTab())
+        default: view = AnyView(SettingsPrivacyTab())
+        }
+        let host = NSHostingController(rootView: view.environmentObject(state))
+        let win = NSWindow(contentViewController: host)
+        win.setContentSize(NSSize(width: 520, height: 420))
+        win.styleMask = [.titled]
+        win.title = "\(tab.capitalized) Settings"
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+        host.view.layoutSubtreeIfNeeded()
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let out = "/tmp/kopie-settings-\(tab).png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-settings-\(tab)")
     }
 
     /// Renders the main window (sidebar, history list, detail panel).

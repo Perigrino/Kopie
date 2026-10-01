@@ -238,6 +238,7 @@ struct HistoryRow: View {
     private var backgroundFill: Color {
         if selectionMode && isSelected { Color.accentColor.opacity(0.12) }
         else if isHighlighted { Color.accentColor.opacity(0.08) }
+        else if hovering { Color.primary.opacity(0.05) }
         else { Color.clear }
     }
 
