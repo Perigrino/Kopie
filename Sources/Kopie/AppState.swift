@@ -12,6 +12,12 @@ final class AppState: ObservableObject {
     /// selection clicks lag and let background captures reorder the list
     /// mid-interaction).
     @Published var mainItems: [ClipboardItem] = []
+    /// True only while the popover opened by the global hotkey is showing.
+    /// A plain click pastes **only** there: the menu-bar list is a browse /
+    /// copy surface, and pasting out of it would yank the caret away from
+    /// whatever the user is in the middle of. Set by AppDelegate right before
+    /// each show.
+    @Published var pasteOnClickEnabled: Bool = false
     private var mainFilter = QueryFilter()
     /// Images whose thumbnail generation already failed — never retried in a
     /// row render (a missing/corrupt file used to be re-decoded every pass).
@@ -139,8 +145,11 @@ final class AppState: ObservableObject {
         // One-time migration: clean up text entries that were really image
         // copies (captured as URLs before the image-first reader fix).
         OneTimeCleanup(store: store, writer: writer).run()
-        // Populate the main window's list snapshot before any view asks for it.
-        refreshMain()
+        // Populate BOTH list snapshots before any view asks for them. The
+        // popover reads `items`, which used to stay empty until its first
+        // open — so the very first hotkey press rendered "Nothing copied yet"
+        // and only then fetched the rows.
+        refresh()
         // launch-time catch-up retention
         runRetentionPolicy()
         // Start monitoring immediately so copies made during onboarding or the

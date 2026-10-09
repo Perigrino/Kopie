@@ -72,8 +72,10 @@ in its `.onAppear`, matching the pattern used in the two `SettingsLink` replacem
 
 ### 2.4 `onKeyPress` modifier (macOS 14+)
 
-**5 call sites** in `PopoverView.swift` — keyboard navigation (arrow keys, Enter,
-Escape, Delete).
+**4 call sites** in `PopoverView.swift` — keyboard navigation (arrow keys, Enter,
+Escape). Delete/backspace (keyCode 51) is deliberately **not** handled: it passes
+through so it can only edit the search field text — it never removes a row from
+the copied items list.
 
 This was the most involved replacement. The declarative `.onKeyPress` modifier was
 replaced with an imperative `NSEvent.addLocalMonitorForEvents(matching: .keyDown)`
@@ -85,7 +87,7 @@ installed in `.onAppear` and removed in `.onDisappear`.
 | Down arrow (keyCode 125) | Move highlight down |
 | Return (keyCode 36) | Copy highlighted item |
 | Escape (keyCode 53) | Clear search or close popover |
-| Delete (keyCode 51) | Remove highlighted item |
+| Delete (keyCode 51) | *Not handled* — passes through to the search field; never removes list items |
 
 **Implementation pattern:**
 ```swift
@@ -98,7 +100,8 @@ private func installKeyMonitor() {
         case 125: moveHighlight(1); return nil
         case 36:  copyHighlighted(); return nil
         case 53:  handleEscape(); return nil
-        case 51:  handleDelete(); return event     // pass through if nothing to delete
+        // case 51 (delete/backspace): unhandled — falls through to default
+        // and reaches only the search field; never removes a list row
         default:  return event
         }
     }

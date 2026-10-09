@@ -10,6 +10,12 @@ struct PopoverView: View {
     @State private var selectedIDs = Set<Int64>()
     @State private var showClearConfirm = false
     @State private var showToast = false
+    /// Copy of the confirmation capsule, so it can say *why* a paste was
+    /// skipped instead of only confirming the clipboard write.
+    @State private var toastText = "Copied"
+    @State private var toastWarning = false
+    @State private var toastActionTitle: String?
+    @State private var toastAction: (() -> Void)?
     @State private var toastTask: Task<Void, Never>?
     /// Flat index into `state.items` for keyboard navigation (nil = nothing highlighted).
     @State private var highlightedIndex: Int?
@@ -41,7 +47,10 @@ struct PopoverView: View {
             highlightedIndex = state.items.isEmpty ? nil : 0
         }
         .onAppear {
-            state.refresh()
+            // No refresh() here: AppDelegate refreshes before it shows the
+            // popover, and every capture refreshes via .kopieStoreChanged.
+            // Refreshing again on appear doubled the queries on every open
+            // and is what made the list visibly lag behind the popup.
             DispatchQueue.main.async { searchFocused = true }
             highlightedIndex = state.items.isEmpty ? nil : 0
             // Re-install safely: SwiftUI can call onAppear again while
@@ -63,7 +72,9 @@ struct PopoverView: View {
         }
         .overlay(alignment: .bottom) {
             if showToast {
-                CopiedToast().padding(.bottom, 12)
+                CopiedToast(text: toastText, warning: toastWarning,
+                            actionTitle: toastActionTitle, action: toastAction)
+                    .padding(.bottom, 12)
             }
         }
         .sheet(isPresented: $showClearConfirm) {
@@ -154,6 +165,12 @@ struct PopoverView: View {
                 Button("Resume Monitoring") { state.startMonitoring() }.padding(.bottom, 12)
             }
         } else {
+            // Flat index per item, built once per render. `firstIndex` inside
+            // the ForEach was O(n²) on every paint (including the hover-driven
+            // ones). Uniquing rather than trapping so a bad row can never take
+            // the popover down with it.
+            let indexByID = Dictionary(state.items.enumerated().map { ($1.id, $0) },
+                                       uniquingKeysWith: { first, _ in first })
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -163,13 +180,19 @@ struct PopoverView: View {
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 10).padding(.bottom, 4)
                             ForEach(Array(group.items.enumerated()), id: \.element.id) { _, item in
-                                let idx = state.items.firstIndex { $0.id == item.id } ?? 0
+                                // Flat index per item, built once per render.
+                                // Calling firstIndex inside the ForEach was O(n²)
+                                // on every paint (including the hover-driven ones).
+                                let idx = indexByID[item.id] ?? 0
                                 HistoryRow(item: item,
                                            thumbnail: state.thumbnail(for: item),
                                            selectionMode: selectionMode,
                                            isSelected: selectedIDs.contains(item.id),
                                            isHighlighted: highlightedIndex == idx,
                                            onCopy: { copy(item) },
+                                           // Click-to-paste is hotkey-popover only; the
+                                           // menu-bar list falls back to plain copy.
+                                           onPaste: state.pasteOnClickEnabled ? { copyAndPaste(item) } : nil,
                                            onRemove: { state.remove(item) },
                                            onFavorite: { state.toggleFavorite(item) },
                                            onPin: { state.togglePin(item) },
@@ -184,13 +207,16 @@ struct PopoverView: View {
                                            })
                                     .id(item.id)
                                     .modifier(RowGeometry(itemID: item.id))
-                                    // ⌥-click: copy back AND paste into the frontmost app.
-                                    .onTapGesture { }
+                                    // ⌥-click: same copy-and-paste path as a plain click
+                                    // (the popover only closes when the paste can actually
+                                    // happen). A plain tap is handled inside HistoryRow —
+                                    // there must be exactly one non-simultaneous tap
+                                    // recognizer on the row. The empty `.onTapGesture {}`
+                                    // that used to sit here was a leftover `.onDrag`
+                                    // workaround and competed with it, which is what made
+                                    // the first clicks do nothing.
                                     .simultaneousGesture(TapGesture().modifiers(.option).onEnded { _ in
-                                        copy(item)
-                                        if SettingsStore.shared.pasteDirect {
-                                            closeAndPaste()
-                                        }
+                                        copyAndPaste(item)
                                     })
                             }
                         }
@@ -301,27 +327,56 @@ struct PopoverView: View {
 
     private func copy(_ item: ClipboardItem) {
         state.copyBack(item, plainTextOnly: controlHeld)
+        presentToast()
+    }
+
+    /// Context-menu action: stages the item without its rich-text flavors.
+    private func copyPlainText(_ item: ClipboardItem) {
+        state.copyBack(item, plainTextOnly: true)
+        presentToast()
+    }
+
+    /// Shows the confirmation capsule. Warnings get longer on screen — the
+    /// user has to have time to read why their click didn't paste, and to act
+    /// on the `action` that takes them to the pane that fixes it.
+    private func presentToast(_ text: String = "Copied", warning: Bool = false,
+                              seconds: Double = 1,
+                              actionTitle: String? = nil, action: (() -> Void)? = nil) {
+        toastText = text
+        toastWarning = warning
+        toastActionTitle = actionTitle
+        toastAction = action
         showToast = true
         toastTask?.cancel()
         toastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             if !Task.isCancelled {
                 withAnimation { showToast = false }
             }
         }
     }
 
-    /// Context-menu action: stages the item without its rich-text flavors.
-    private func copyPlainText(_ item: ClipboardItem) {
-        state.copyBack(item, plainTextOnly: true)
-        showToast = true
-        toastTask?.cancel()
-        toastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            if !Task.isCancelled {
-                withAnimation { showToast = false }
-            }
+    /// A click on a row: stage the item on the clipboard, then — when
+    /// Settings → General "Paste directly into apps" is on — close the popover
+    /// and paste it at the caret in the app underneath. With that setting off
+    /// this is a plain copy and the popover stays open.
+    ///
+    /// When Accessibility hasn't been granted the paste can't happen, so the
+    /// popover stays up and the toast says so. Closing would leave the click
+    /// looking like it did nothing at all. The system's own permission dialog
+    /// is raised at most once per launch — re-asking on every click is what
+    /// turned each paste attempt into a modal prompt.
+    private func copyAndPaste(_ item: ClipboardItem) {
+        copy(item)
+        guard SettingsStore.shared.pasteDirect else { return }
+        guard PasteDirectService.isPermissionGranted else {
+            GlobalActions.requestPastePermission?()
+            presentToast("Copied — Accessibility needed to paste", warning: true, seconds: 6,
+                         actionTitle: "Open Settings",
+                         action: { PasteDirectService.openAccessibilitySettings() })
+            return
         }
+        closeAndPaste()
     }
 
     /// Copies the highlighted (or first) item, then simulates ⌘V in the
@@ -335,29 +390,24 @@ struct PopoverView: View {
             item = state.items.first
         }
         guard let item else { return }
-        copy(item)
-        guard SettingsStore.shared.pasteDirect else { return }
-        closeAndPaste()
+        copyAndPaste(item)
     }
 
     /// ⌥1…⌥9 quick-select: copy the nth item, then direct-paste it.
     private func quickSelect(_ n: Int) {
         guard state.items.indices.contains(n - 1) else { return }
-        copy(state.items[n - 1])
-        guard SettingsStore.shared.pasteDirect else { return }
-        closeAndPaste()
+        copyAndPaste(state.items[n - 1])
     }
 
-    /// Closes the popover, waits for the target app to become frontmost,
-    /// then simulates ⌘V. Without the Accessibility permission, falls back
-    /// to staging on the clipboard and asks the system for permission.
+    /// Closes the popover and asks AppDelegate to paste once the app the
+    /// popover interrupted is frontmost again. That hand-back is the whole
+    /// point: a blind `asyncAfter` fired ⌘V while Kopie could still have been
+    /// the active app, so the keystroke went nowhere and the caret never
+    /// received the item. Without the Accessibility permission the paste is
+    /// skipped and the user is told instead of being left with silence.
     private func closeAndPaste() {
         GlobalActions.closePopover?()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            if !PasteDirectService.paste() {
-                PasteDirectService.requestPermission()
-            }
-        }
+        GlobalActions.pasteWhenFocusReturns?()
     }
 
     private func moveHighlight(_ delta: Int) {
@@ -419,7 +469,9 @@ struct PopoverView: View {
         case 125: moveHighlight(1); return true    // down arrow
         case 36:  copyAndPasteHighlighted(); return true // return
         case 53:  handleEscape(); return true      // escape
-        case 51:  return handleDelete()            // delete
+        // 51 (delete/backspace) deliberately unhandled: backspace may only
+        // edit the search field text — it must never remove a record from
+        // the copied items list.
         case 18, 19, 20, 21, 23, 22, 26, 28, 25:   // ⌥1…⌥9 quick-select
             if event.modifierFlags.contains(.option) {
                 let digits = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
@@ -465,18 +517,5 @@ struct PopoverView: View {
         } else {
             GlobalActions.closePopover?()
         }
-    }
-
-    /// Removes the highlighted row. Returns true when a row was removed
-    /// (event swallowed); with no highlighted row (empty or search-drained
-    /// list) the event passes through so the search field still sees text.
-    @discardableResult
-    private func handleDelete() -> Bool {
-        if let idx = highlightedIndex, state.items.indices.contains(idx) {
-            state.remove(state.items[idx])
-            highlightedIndex = min(idx, state.items.count - 1)
-            return true
-        }
-        return false
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ServiceManagement
 import KopieCore
 
@@ -12,6 +13,10 @@ struct SettingsGeneralTab: View {
     @AppStorage(SettingsStore.Keys.pasteDirect) private var pasteDirect = true
     @AppStorage(SettingsStore.Keys.pasteAsPlainText) private var pasteAsPlainText = false
     @AppStorage(SettingsStore.Keys.showMenuBarPreview) private var showMenuBarPreview = true
+    /// Live state of the Accessibility grant. Re-checked whenever the app comes
+    /// back to the foreground, because granting it in System Settings is the
+    /// one action that changes it — and that always means leaving this app.
+    @State private var axGranted = PasteDirectService.isPermissionGranted
 
     var body: some View {
         Form {
@@ -36,9 +41,28 @@ struct SettingsGeneralTab: View {
             }
             Section {
                 Toggle("Paste directly into apps", isOn: $pasteDirect)
-                Text("With the popover open: ⌥↩ or ⌥-click copies an item and immediately pastes it into the app you were in (⌥1–9 quick-select). Needs Accessibility — Kopie will offer to open System Settings the first time.")
+                    .onChange(of: pasteDirect) { on in
+                        // Turning the feature on is the moment to ask for the access it
+                        // needs — asking later, when a click has already done nothing,
+                        // reads as a bug rather than a missing grant.
+                        axGranted = PasteDirectService.isPermissionGranted
+                        if on && !axGranted { PasteDirectService.requestPermission() }
+                    }
+                Text("A click in the shortcut popover copies the item and pastes it straight into the app you were in. ⌥↩, ⌥-click and ⌥1–9 quick-select work in either popover. Needs Accessibility.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if pasteDirect && !axGranted {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Accessibility access is off, so items can't be pasted into other apps yet.")
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Button("Open Settings") { PasteDirectService.openAccessibilitySettings() }
+                            .font(.caption)
+                    }
+                }
                 Toggle("Paste as plain text", isOn: $pasteAsPlainText)
                 Text("Strips rich formatting when copying items back, so target apps receive unstyled text. Hold ⌃ while copying in the popover to do it once without changing this setting.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -68,9 +92,18 @@ struct SettingsGeneralTab: View {
         }
         .formStyle(.grouped)
         .padding(8)
-        .onAppear { appearance = SettingsStore.shared.appearance }
+        .onAppear {
+            appearance = SettingsStore.shared.appearance
+            axGranted = PasteDirectService.isPermissionGranted
+        }
         .onReceive(NotificationCenter.default.publisher(for: .kopieAppearanceChanged)) { _ in
             appearance = SettingsStore.shared.appearance
+        }
+        // Granting Accessibility always means leaving this window for System
+        // Settings; re-read the grant the moment the app is clicked back in so
+        // the warning clears without the user reopening Settings.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            axGranted = PasteDirectService.isPermissionGranted
         }
     }
 

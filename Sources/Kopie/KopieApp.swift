@@ -9,6 +9,14 @@ enum GlobalActions {
     static var openSettings: (@MainActor () -> Void)?
     static var openOnboarding: (() -> Void)?
     static var closePopover: (() -> Void)?
+    /// Raises the system's Accessibility prompt at most once per launch, so a
+    /// missing grant reads as one explanation rather than a dialog on every
+    /// click.
+    static var requestPastePermission: (() -> Void)?
+    /// Closes the popover, hands focus back to the app it interrupted and only
+    /// then simulates ⌘V there — so a paste lands at the caret the user was
+    /// actually in instead of being swallowed by Kopie.
+    static var pasteWhenFocusReturns: (() -> Void)?
     /// Show (or switch) the floating preview bubble for an item. `rowY` is the
     /// row's center in popover-root coordinates (top-down).
     static var showPreview: ((ClipboardItem, CGFloat?) -> Void)?

@@ -9,6 +9,10 @@ struct HistoryRow: View {
     var isSelected: Bool = false
     var isHighlighted: Bool = false
     var onCopy: () -> Void
+    /// What a tap on the row itself does. Nil falls back to `onCopy`, so a
+    /// caller can make "click the row" paste while the context menu's Copy
+    /// stays a plain clipboard stage. Set alongside `copyOnTap`.
+    var onPaste: (() -> Void)? = nil
     var onRemove: () -> Void
     var onFavorite: () -> Void
     var onPin: () -> Void = {}
@@ -78,6 +82,15 @@ struct HistoryRow: View {
         // Gives the quick-buttons opacity transition (and the selection fill)
         // a 150ms ease instead of a hard swap.
         .animation(.easeInOut(duration: 0.15), value: hovering)
+        // The tap gesture goes on BEFORE .contextMenu so it stays the innermost
+        // recognizer: the menu is an outer wrapper (the usual control-inside-menu
+        // arrangement) and can never compete with the row's own click. When the
+        // two were reversed the row needed several clicks before one landed —
+        // the competing recognizers swallowed the early ones.
+        .modifier(TapAction(enabled: selectionMode || copyOnTap) {
+            if selectionMode { onToggleSelect?() ?? () }
+            else { (onPaste ?? onCopy)() }
+        })
         .contextMenu {
             ContextMenuBuilder(
                 item: item,
@@ -92,10 +105,6 @@ struct HistoryRow: View {
                 expiresAfterUse: expiresAfterUse
             )
         }
-        .modifier(TapAction(enabled: selectionMode || copyOnTap) {
-            if selectionMode { onToggleSelect?() ?? () }
-            else { onCopy() }
-        })
     }
 
     /// Sentinel-masked rows never show their content in the list — not even

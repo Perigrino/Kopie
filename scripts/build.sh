@@ -88,7 +88,17 @@ SIGNER="${KOPIE_SIGN_IDENTITY:-}"
 if [ -n "$SIGNER" ]; then
   codesign --force --sign "$SIGNER" --entitlements "$ENT_FILE" --options runtime "$APP"
 else
-  codesign --force --sign - --entitlements "$ENT_FILE" --options runtime "$APP"
+  # Ad-hoc signing defaults the designated requirement to the code's cdhash,
+  # which changes on every rebuild. macOS stores that requirement as the
+  # Accessibility (TCC) grant, so every rebuild silently invalidated the grant
+  # and forced a re-authorisation. Pin it to the bundle identifier instead —
+  # stable across builds, so the grant survives a rebuild.
+  BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' \
+    "$APP/Contents/Info.plist" 2>/dev/null || echo com.kopie.app)"
+  echo "    designated requirement: identifier \"$BUNDLE_ID\""
+  codesign --force --sign - \
+    --requirements "=designated => identifier \"$BUNDLE_ID\"" \
+    --entitlements "$ENT_FILE" --options runtime "$APP"
 fi
 rm -rf "$(dirname "$ENT_FILE")"
 codesign --verify --verbose=2 "$APP"

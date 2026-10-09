@@ -27,6 +27,22 @@ enum PasteDirectService {
         }
     }
 
+    /// Jumps straight to Privacy & Security → Accessibility, where the grant
+    /// lives. Pointing at the pane beats describing it: the system's own prompt
+    /// only offers "Open System Settings", which lands the user on the privacy
+    /// front door with the right list still to find.
+    static func openAccessibilitySettings() {
+        // The anchor changed across macOS releases; try the current one first
+        // and fall back to the privacy root rather than doing nothing.
+        let candidates = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.preference.security",
+        ]
+        for candidate in candidates {
+            if let url = URL(string: candidate), NSWorkspace.shared.open(url) { return }
+        }
+    }
+
     /// Simulates ⌘V in the frontmost app after `delayMs`, giving the caller
     /// time to hide the popover first. Returns false when the permission is
     /// missing (caller should offer onboarding instead).

@@ -18,6 +18,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var screenShield: ScreenShield!
     /// Headless launch probe (--smoke-windows): reports visible windows, then quits.
     private var smokeProbeTimer: Timer?
+    /// The app that was frontmost when the popover took focus. The popover
+    /// activates Kopie so its window can be key (first click lands, search
+    /// field focused); this is what gets handed focus back when it closes, and
+    /// the app ⌘V must reach. nil when Kopie was already frontmost.
+    private var prePopoverApp: NSRunningApplication?
+    /// True once this launch has raised the system's Accessibility dialog.
+    /// `AXIsProcessTrustedWithOptions(prompt:)` re-shows it on every call while
+    /// the grant is missing, so without this each click became a modal prompt.
+    private var axPromptShown = false
 
     /// Shields (or unshields) every Kopie window. Each window's original
     /// sharing type is remembered on first shield so un-shielding restores
@@ -81,6 +90,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         GlobalActions.openSettings = { [weak self] in self?.showSettings(closePopover: true) }
         GlobalActions.openOnboarding = { [weak self] in self?.showOnboarding(closePopover: true) }
         GlobalActions.closePopover = { [weak self] in self?.popover?.performClose(nil) }
+        GlobalActions.pasteWhenFocusReturns = { [weak self] in self?.pasteWhenFocusReturns() }
+        GlobalActions.requestPastePermission = { [weak self] in self?.requestAccessibilityOnce() }
         GlobalActions.showPreview = { [weak self] item, y in self?.previewPanel.preview(item, rowY: y) }
         GlobalActions.movePreview = { [weak self] item, y in self?.previewPanel.move(item, rowY: y) }
         GlobalActions.clearPreview = { [weak self] seconds in self?.previewPanel.scheduleClear(after: seconds) }
@@ -93,6 +104,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         applyVisibility()
 
         registerHotKey()
+        // Resolve source-app icons before the popover is ever opened. The first
+        // render used to pay for NSWorkspace lookups and offscreen image draws
+        // row by row — on the critical path of the very click that revealed
+        // them. Deferred so launch itself isn't held up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.prewarmRowIcons()
+        }
         // Re-apply the appearance whenever the persisted setting changes (the
         // Settings picker and the status menu both write through SettingsStore).
         NotificationCenter.default.addObserver(forName: .kopieAppearanceChanged, object: nil, queue: .main) { [weak self] _ in
@@ -121,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // MARK: - Windows
 
     func showMainWindow(closePopover: Bool = false) {
+        prePopoverApp = nil   // the user is coming to Kopie on purpose: don't bounce focus back out
         if closePopover { popover?.performClose(nil) }
         if mainWindow == nil {
             let hosting = NSHostingController(rootView: MainView().environmentObject(state))
@@ -137,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func showSettings(closePopover: Bool = false) {
+        prePopoverApp = nil
         if closePopover { popover?.performClose(nil) }
         if settingsWindow == nil {
             let hosting = NSHostingController(rootView: SettingsView().environmentObject(state))
@@ -153,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func showOnboarding(closePopover: Bool = false) {
+        prePopoverApp = nil
         if closePopover { popover?.performClose(nil) }
         if onboardingWindow == nil {
             let hosting = NSHostingController(rootView: OnboardingView().environmentObject(state))
@@ -183,9 +204,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(nil) }
         else {
+            beginPopoverShow(pasteOnClick: false)   // menu-bar icon: copy only
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            if let w = popover.contentViewController?.view.window { w.level = .popUpMenu; w.makeKey() }
-            state.refresh()
+            endPopoverShow()
+        }
+    }
+
+    /// Everything that has to happen before the popover's window exists.
+    ///
+    /// The refresh moved here from after `show(...)`: the popup used to appear
+    /// first and query afterwards, so the list landed a beat late (and the very
+    /// first open flashed its empty state before any rows were fetched).
+    /// Activation is what makes the *first* click land — an accessory app whose
+    /// window never becomes active spends the opening mouse-down on activation
+    /// instead of on the row, which is why a row used to need two or three
+    /// clicks before anything was copied. The app that had focus is recorded
+    /// first so it can be handed back on close.
+    private func beginPopoverShow(pasteOnClick: Bool) {
+        let front = NSWorkspace.shared.frontmostApplication
+        prePopoverApp = (front?.processIdentifier == ProcessInfo.processInfo.processIdentifier) ? nil : front
+        // Which popover this is decides whether a plain click may paste — see
+        // AppState.pasteOnClickEnabled.
+        state.pasteOnClickEnabled = pasteOnClick
+        state.refresh()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func endPopoverShow() {
+        if let w = popover.contentViewController?.view.window { w.level = .popUpMenu; w.makeKey() }
+    }
+
+    /// Warms `AppIconResolver` for the source apps already in history so the
+    /// popover's first paint doesn't resolve them inline. Matches the 10×10
+    /// size HistoryRow asks for — the cache is keyed by size, so any other
+    /// size would warm the wrong entry.
+    private func prewarmRowIcons() {
+        let size = NSSize(width: 10, height: 10)
+        for bundleID in Set(state.items.compactMap(\.sourceApp)) {
+            _ = AppIconResolver.icon(for: bundleID, size: size)
         }
     }
 
@@ -212,10 +268,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         let edge: NSRectEdge = (mouse.y - popover.contentSize.height < (screen?.visibleFrame.minY ?? 0))
             ? .maxY : .minY
+        beginPopoverShow(pasteOnClick: true)        // global hotkey: click may paste
         popover.show(relativeTo: NSRect(x: 0, y: 0, width: 1, height: 1),
                      of: anchor.contentView!, preferredEdge: edge)
-        if let w = popover.contentViewController?.view.window { w.level = .popUpMenu; w.makeKey() }
-        state.refresh()
+        endPopoverShow()
     }
 
     /// Left-click toggles the popover; right-click shows a small menu with Quit.
@@ -317,6 +373,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationCenter.default.post(name: .kopieRequestClearAll, object: nil)
     }
 
+    // MARK: - Focus hand-back & direct paste
+
+    /// Hands focus back to the app that was frontmost before the popover
+    /// opened. Only acts while Kopie itself holds focus — if the user has
+    /// already clicked into some other app, that choice wins and we stay out
+    /// of the way rather than yanking focus back to the original one.
+    private func restoreFrontmostApp() {
+        guard let target = prePopoverApp, !target.isTerminated else { return }
+        let front = NSWorkspace.shared.frontmostApplication
+        let kopieFrontmost = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+        guard kopieFrontmost || front == nil else { return }
+        guard front?.processIdentifier != target.processIdentifier else { return }
+        if #available(macOS 14.0, *) { _ = target.activate() }
+        else { _ = target.activate(options: [.activateIgnoringOtherApps]) }
+    }
+
+    /// Closes the popover, returns focus to the interrupted app, and pastes
+    /// into it once it is genuinely frontmost again.
+    ///
+    /// The old path fired ⌘V on a blind 150ms timer with no focus bookkeeping
+    /// at all: Kopie had activated itself to show the popover, so the keystroke
+    /// frequently went to Kopie (or to nothing) and the caret never received
+    /// the item. Waiting for the actual frontmost app removes the guesswork.
+    private func pasteWhenFocusReturns() {
+        guard let target = prePopoverApp else {
+            // Kopie was already frontmost before the popover opened — there is
+            // no other app to hand back to, so paste straight away.
+            firePaste()
+            return
+        }
+        restoreFrontmostApp()
+        var attempts = 0
+        func step() {
+            attempts += 1
+            let back = NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
+            if !back && attempts < 20 {          // ≤ ~0.6s of waiting
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { MainActor.assumeIsolated { step() } }
+                return
+            }
+            if !back { restoreFrontmostApp() }   // last attempt: activate, then paste anyway
+            // One run-loop turn so the target's window is key before ⌘V lands.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+                MainActor.assumeIsolated { self?.firePaste() }
+            }
+        }
+        step()
+    }
+
+    /// Raises the system's Accessibility dialog — at most once per launch.
+    /// `AXIsProcessTrustedWithOptions(prompt:)` shows it again on every call
+    /// for as long as the grant is missing, which is exactly what turned each
+    /// paste attempt into a permission prompt.
+    private func requestAccessibilityOnce() {
+        guard !axPromptShown else { return }
+        axPromptShown = true
+        PasteDirectService.requestPermission()
+    }
+
+    /// Simulates ⌘V, or tells the user why it can't when Accessibility is
+    /// missing. The popover is already gone at this point, so failing silently
+    /// reads as "my click did nothing" — hence the notification. The system
+    /// dialog itself is raised once per launch, never once per click.
+    private func firePaste() {
+        if PasteDirectService.paste(delayMs: 0) { return }
+        requestAccessibilityOnce()
+        KopieNotifications.show(
+            title: "Paste Blocked",
+            message: "Grant Kopie Accessibility access in System Settings → Privacy & Security, then reopen Kopie. Your clipboard still has the item — press ⌘V to paste it.")
+    }
+
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
 
     func popoverDidShow(_ notification: Notification) {
@@ -329,6 +455,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         cursorAnchor?.close()
         cursorAnchor = nil
         previewPanel?.popoverDidClose()
+        // Kopie activated itself to open the popover; give the user their app
+        // back so Escape or an outside click leaves them where they were.
+        restoreFrontmostApp()
     }
 
     // MARK: - Launch probe (--smoke-windows)
