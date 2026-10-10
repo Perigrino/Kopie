@@ -17,8 +17,12 @@ enum AppIcon {
 
     /// Menu-bar icon: the monochrome template glyph, tinted automatically for
     /// light/dark menu bars. Falls back to the full-color icon if missing.
-    static func menuBarImage() -> NSImage {
-        if let glyph = NSImage(named: "KopieMenuTemplate") {
+    ///
+    /// `paused` swaps in the slashed variant, so monitoring state is legible
+    /// from the bar alone — the one glance that answers "is it still watching?"
+    /// without opening the popover.
+    static func menuBarImage(paused: Bool = false) -> NSImage {
+        if let glyph = NSImage(named: paused ? "KopieMenuPaused" : "KopieMenuTemplate") {
             glyph.isTemplate = true
             glyph.size = NSSize(width: 18, height: 18)
             return glyph

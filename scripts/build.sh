@@ -23,10 +23,14 @@ fi
 if [ -f "assets/icon-sources/Kopie.icns" ]; then
   cp "assets/icon-sources/Kopie.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
-# Monochrome menu-bar glyph (scripts/icon-sources/generate-menu-template.swift)
-if [ -f "assets/icon-sources/KopieMenuTemplate.png" ]; then
-  cp "assets/icon-sources/KopieMenuTemplate.png" "$APP/Contents/Resources/KopieMenuTemplate.png"
-fi
+# Monochrome menu-bar glyph + its "monitoring paused" slashed twin
+# (scripts/icon-sources/generate-menu-icon.swift, card-stack concept).
+# Both are template images — macOS tints the alpha mask to match the bar.
+for RES in KopieMenuTemplate KopieMenuPaused; do
+  if [ -f "assets/icon-sources/$RES.png" ]; then
+    cp "assets/icon-sources/$RES.png" "$APP/Contents/Resources/$RES.png"
+  fi
+done
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

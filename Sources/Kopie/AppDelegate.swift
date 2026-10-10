@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         KopieStateBridge.register(KopieStateHandle(state: state))
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = AppIcon.menuBarImage()
+            button.image = AppIcon.menuBarImage(paused: state.isPaused)
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -101,6 +101,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.closeOnboardingIfDone()
         }
         .store(in: &cancellables)
+        // `isPaused` is set together with `monitorPaused` in start/pauseMonitoring,
+        // so the bar glyph tracks monitoring without a separate notification.
+        state.$isPaused
+            .removeDuplicates()
+            .sink { [weak self] paused in
+                self?.statusItem.button?.image = AppIcon.menuBarImage(paused: paused)
+            }
+            .store(in: &cancellables)
         applyVisibility()
 
         registerHotKey()
