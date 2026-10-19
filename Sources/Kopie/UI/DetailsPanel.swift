@@ -136,6 +136,11 @@ struct DetailsPanel: View {
 
     @ViewBuilder private var content: some View {
         if item.kind == .text {
+            // Color literals become a swatch card with their own copy
+            // actions — the plain/rich box below is for everything else.
+            if let colorValue = ColorParser.parse(item.text ?? "") {
+                colorSwatch(colorValue)
+            } else {
             VStack(alignment: .leading, spacing: 8) {
                 // Load rich text data once per body pass
                 let data = richData
@@ -240,6 +245,7 @@ struct DetailsPanel: View {
                 .animation(.easeInOut(duration: 0.18), value: showRichText) // crossfade tabs
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
+            }
             }
         } else if item.kind == .file {
             ScrollView {
@@ -366,21 +372,19 @@ struct DetailsPanel: View {
                         .strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
                 .frame(height: 96)
             HStack(spacing: 8) {
-                Button("Copy HEX") {
+                EmberGhostButton(title: "Copy HEX") {
                     state.copyTextToClipboard(color.hexString)
                     onCopied?()
                 }
-                Button("Copy RGB") {
+                EmberGhostButton(title: "Copy RGB") {
                     state.copyTextToClipboard(color.rgbString)
                     onCopied?()
                 }
-                Button("Copy HSL") {
+                EmberGhostButton(title: "Copy HSL") {
                     state.copyTextToClipboard(color.hslString)
                     onCopied?()
                 }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                 GridRow { Text("HEX").foregroundStyle(.secondary); Text("#\(color.hexString)").textSelection(.enabled) }
                 GridRow { Text("RGB").foregroundStyle(.secondary); Text(color.rgbString).textSelection(.enabled) }

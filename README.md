@@ -1,24 +1,26 @@
 # Kopie
 
 <p align="center">
-  <img src="assets/screenshots/landing.png" alt="Kopie welcome" width="480">
+  <img src="assets/screenshots/landing.png" alt="Kopie welcome — dark Ember splash" width="480">
 </p>
 
 Native macOS clipboard manager — menu-bar first, fast, local-only.
 Copy something, find it later, paste it back.
 
 <p align="center">
-  <img src="assets/screenshots/main-window.png" alt="Kopie main window — sidebar filters, day-grouped history, detail panel" width="640">
+  <img src="assets/screenshots/main-window.png" alt="Kopie main window — sidebar filters, day-grouped history, detail panel, dark Ember theme" width="640">
 </p>
 
 ## Screenshots
 
 | | |
 |---|---|
-| <img src="assets/screenshots/onboarding-ready.png" width="270" alt="Onboarding final step — hotkey teaching"> | <img src="assets/screenshots/sentinel.png" width="270" alt="Sensitive-data sentinel masks detected secrets"> |
-| *Onboarding ends by teaching the hotkey* | *Sentinel masks a detected API token until revealed* |
-| <img src="assets/screenshots/color-swatch.png" width="270" alt="Color swatch with copy actions"> | |
-| *Copied colors become swatches with Copy HEX / RGB / HSL* | |
+| <img src="assets/screenshots/main-window-light.png" width="270" alt="Kopie main window in light mode"> | <img src="assets/screenshots/popover.png" width="270" alt="Menu-bar popover with search and grouped history"> |
+| *Light mode — same Ember theme, warm paper* | *Menu-bar popover — search, day groups, copy-back* |
+| <img src="assets/screenshots/color-swatch.png" width="270" alt="Color swatch with copy actions"> | <img src="assets/screenshots/sentinel.png" width="270" alt="Sensitive-data sentinel masks detected secrets"> |
+| *Copied colors become swatches with Copy HEX / RGB / HSL* | *Sentinel masks a detected API token until revealed* |
+| <img src="assets/screenshots/onboarding-ready.png" width="270" alt="Onboarding final step — hotkey teaching"> | |
+| *Onboarding ends by teaching the hotkey* | |
 
 ## Why Kopie?
 
@@ -30,6 +32,7 @@ Copy something, find it later, paste it back.
 ## Features
 
 - Captures text and images copied anywhere on your Mac
+- Full light & dark appearance with the Ember theme — every surface tokens both modes
 - Live search with day-grouped history, sidebar filters, and image thumbnails
 - Copy-back via global hotkey (`⌘⇧V`), direct paste (`⌥↩`), quick-select (`⌥1`–`⌥9`)
 - OCR — find screenshots by the words inside them (fully on-device)
