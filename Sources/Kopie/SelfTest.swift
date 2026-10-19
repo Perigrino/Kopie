@@ -64,6 +64,14 @@ enum SelfTest {
             let b = NSPasteboard.general
             if let s = b.string(forType: .string) { print("TEXT \(s)") }
             print("TYPES \(b.types?.map { "\($0)" } ?? [])")
+        case "--smoke-fav", "--smoke-pin":
+            // Sets favorite/pin on an item so the on-state chrome can be
+            // rendered (`--smoke-fav <id> on|off` / `--smoke-pin <id> on|off`).
+            guard args.count > 1, let id = Int64(args[1]) else { print("ERR id"); return true }
+            guard store.get(id) != nil else { print("ERR notfound"); return true }
+            let on = args.count < 3 || args[2] != "off"
+            if args[0] == "--smoke-fav" { store.setFavorite(id, on) } else { store.setPinned(id, on) }
+            print("\(args[0]) \(id) on=\(on)")
         case "--smoke-render":
             // Renders DetailsPanel for an item offscreen and writes PNG snapshots
             // to /tmp for visual verification. Pass "dark" as arg 3 for dark mode.
@@ -113,6 +121,18 @@ enum SelfTest {
             MainActor.assumeIsolated {
                 renderBubble(item: item, dark: args.contains("dark"))
             }
+        case "--smoke-render-confirm":
+            // Renders ConfirmDialog offscreen. Args: [danger|plain|privacy] [dark]
+            // — privacy fake-requires typing a phrase.
+            MainActor.assumeIsolated {
+                renderConfirm(kind: args.count > 1 && args[1] != "dark" ? args[1] : "danger",
+                              dark: args.contains("dark"))
+            }
+        case "--smoke-render-loading":
+            // Renders the spec's "Loading" skeleton demo offscreen.
+            MainActor.assumeIsolated {
+                renderLoading(dark: args.contains("dark"))
+            }
         default:
             return false
         }
@@ -143,6 +163,76 @@ enum SelfTest {
         Self.writeWindowCapture(win, name: "kopie-render-\(item.id)\(dark ? "-dark" : "")")
     }
 
+    @MainActor
+    private static func renderConfirm(kind: String, dark: Bool = false) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let dialog: ConfirmDialog
+        switch kind {
+        case "privacy":
+            dialog = ConfirmDialog(title: "Clear All History",
+                                   message: "This will permanently remove all items. Type DELETE to confirm.",
+                                   confirmTitle: "Clear All", destructive: true,
+                                   requiresTyping: "DELETE",
+                                   onConfirm: {}, onCancel: {})
+        case "plain":
+            dialog = ConfirmDialog(title: "Clear All History",
+                                   message: "This will permanently remove all items.",
+                                   confirmTitle: "Clear All",
+                                   onConfirm: {}, onCancel: {})
+        default:
+            dialog = ConfirmDialog(title: "Delete Items",
+                                   message: "Selected items will be permanently removed.",
+                                   confirmTitle: "Delete", destructive: true,
+                                   onConfirm: {}, onCancel: {})
+        }
+        // The offscreen harness window doesn't reliably propagate the
+        // darkAqua appearance into SwiftUI's colorScheme environment — force
+        // it so captures match the appearance under test.
+        let styled = AnyView(dialog.environment(\.colorScheme, dark ? .dark : .light))
+        let win = NSWindow(contentViewController: NSHostingController(rootView: styled))
+        win.setContentSize(NSSize(width: 340, height: 280))
+        win.styleMask = [.titled]
+        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(2))
+        let host = win.contentViewController as! NSHostingController<AnyView>
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let suffix = kind == "danger" ? "" : "-\(kind)"
+            let out = "/tmp/kopie-confirm\(suffix)\(dark ? "-dark" : "").png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-confirm\(kind == "danger" ? "" : "-\(kind)")\(dark ? "-dark" : "")")
+    }
+
+    @MainActor
+    private static func renderLoading(dark: Bool = false) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let content = ZStack {
+            EmberCanvas(scheme: dark ? .dark : .light)
+            LoadingRowsCard().padding(24)
+        }
+        .frame(width: 320, height: 240)
+        let win = NSWindow(contentViewController: NSHostingController(rootView: AnyView(content)))
+        win.styleMask = [.titled]
+        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+        let host = win.contentViewController as! NSHostingController<AnyView>
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            let out = "/tmp/kopie-loading\(dark ? "-dark" : "").png"
+            try? png.write(to: URL(fileURLWithPath: out))
+            print("WROTE \(out) \(png.count)B")
+        }
+        Self.writeWindowCapture(win, name: "kopie-loading\(dark ? "-dark" : "")")
+    }
+
     /// Renders one Settings tab for visual verification.
     @MainActor
     private static func renderSettings(tab: String) {
@@ -151,16 +241,16 @@ enum SelfTest {
         let state = AppState()
         let view: AnyView
         switch tab {
-        case "general": view = AnyView(SettingsGeneralTab())
-        case "clipboard": view = AnyView(SettingsClipboardTab())
-        case "cleanup": view = AnyView(SettingsCleanupTab())
-        case "storage": view = AnyView(SettingsStorageTab())
-        case "security": view = AnyView(SettingsSecurityTab())
-        default: view = AnyView(SettingsPrivacyTab())
+        case "general": view = AnyView(SettingsView(initialSelection: .general))
+        case "clipboard": view = AnyView(SettingsView(initialSelection: .clipboard))
+        case "cleanup": view = AnyView(SettingsView(initialSelection: .cleanup))
+        case "storage": view = AnyView(SettingsView(initialSelection: .storage))
+        case "security": view = AnyView(SettingsView(initialSelection: .security))
+        default: view = AnyView(SettingsView(initialSelection: .privacy))
         }
         let host = NSHostingController(rootView: view.environmentObject(state))
         let win = NSWindow(contentViewController: host)
-        win.setContentSize(NSSize(width: 520, height: 420))
+        win.setContentSize(NSSize(width: 660, height: 520))
         win.styleMask = [.titled]
         win.title = "\(tab.capitalized) Settings"
         win.orderFrontRegardless()

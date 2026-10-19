@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kopie × Ember — redesign prototype</title>
+<meta name="theme-color" content="#08080b" />
+<script>
+/* Light/dark is first-class: restore the choice before first paint so the
+   board never flashes. Falls back to the OS appearance. */
+(function(){
+  var saved = null;
+  try { saved = localStorage.getItem('kopie-prototype-theme'); } catch(e){}
+  var t = saved || ((window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<style>
+/* ============================================================
+   KOPIE — "EMBER" THEME  (v2: Kopie's own palette)
+   ------------------------------------------------------------
+   The *mechanics* come from Airpisode (near-black canvas with two
+   radial glows, translucent cards with a gradient hairline, capsule
+   chips, gradient tiles, one spring vocabulary). The *palette* is
+   Kopie's own, derived from Kopie's actual app icon — a peach→rose
+   clipboard — so it reads as its own product, not as Airpisode.
+
+     accent        #E9622F   tangerine
+     accentMagenta #C42A63   raspberry
+     (alternates below are previewable in section 0)
+
+   Tokens mirror Theme.swift / Motion.swift 1:1 so whoever
+   implements can port them without re-deriving anything.
+   ============================================================ */
+/* ------------------------------------------------------------
+   THEME TOKENS — every surface reads from a token, so a single
+   [data-theme] swap repaints the whole board (app windows too)
+   without any component rule branching on appearance.
+   Dark is the default; light is warm paper.
+   ------------------------------------------------------------ */
+:root, [data-theme="dark"]{
+  color-scheme:dark;
+
+  /* KOPIE PALETTE — default: Ember · Rose */
+  --accent:#E9622F;
+  --accent-magenta:#C42A63;
+  --accent-soft:rgba(233,98,47,.20);   /* canvas glow, top-left  */
+  --magenta-soft:rgba(196,42,99,.16);  /* canvas glow, bottom-right */
+  --accent-ink:var(--accent);          /* accent used as small text */
+
+  --page:#08080b;
+  --bg:#000000;
+  --card:rgba(255,255,255,.05);
+  --chip:rgba(255,255,255,.08);
+  --hairline:rgba(255,255,255,.08);
+  --edge-a:rgba(255,255,255,.14);
+  --edge-b:rgba(255,255,255,.02);
+  --grad:linear-gradient(180deg,var(--accent) 0%,var(--accent-magenta) 100%);
+  --grad-h:linear-gradient(90deg,var(--accent) 0%,var(--accent-magenta) 100%);
+
+  --win-bg:#0a0a0e;
+  --win-border:rgba(255,255,255,.09);
+  --win-shadow:0 30px 80px rgba(0,0,0,.6);
+  --titlebar-bg:rgba(255,255,255,.035);
+  --row-hover:rgba(255,255,255,.07);
+  --row-sel:rgba(255,255,255,.09);
+  --row-shadow:0 14px 30px rgba(0,0,0,.42);
+  --content-bg:rgba(255,255,255,.04);
+  --field-bg:rgba(255,255,255,.06);
+  --field-edge:none;
+  --menubar:rgba(255,255,255,.05);
+  --toast-bg:rgba(34,32,42,.88);
+  --toast-shadow:0 12px 30px rgba(0,0,0,.45);
+  --sheen:rgba(255,255,255,.22);
+  --pal-border:rgba(255,255,255,.09);
+  --pal-border-hover:rgba(255,255,255,.22);
+  --pal-on:#ffffff;
+  --swatch-ring:rgba(255,255,255,.2);
+  --tile-shadow:0 8px 20px rgba(0,0,0,.35);
+  --shadow-primary:0 6px 18px rgba(0,0,0,.35);
+  --icon-shadow:0 12px 30px rgba(0,0,0,.55);
+  --glyph-filter:invert(1);
+  --star:#FFD24A;
+  --danger:#FF6B6B;
+  --danger-bg:rgba(255,107,107,.16);
+
+  /* type — Kopie keeps its ≤4 sizes / 2 weights rule */
+  --t-page:26px; --t-sect:17px; --t-row:14px; --t-meta:11px;
+
+  --text:rgba(255,255,255,.94);
+  --text-2:rgba(255,255,255,.62);
+  --text-3:rgba(255,255,255,.40);
+
+  --r-card:16px; --r-row:14px; --r-tile:12px; --r-ctl:8px; --r-pill:999px;
+
+  /* motion — critically damped, no overshoot */
+  --smooth:cubic-bezier(.22,.68,.24,1);
+  --quick:cubic-bezier(.20,.70,.25,1);
+  --d-smooth:450ms; --d-quick:280ms;
+
+  --warn:#FFA23A; --ok:#3DDC84;
+}
+
+/* LIGHT — warm paper, white cards, same Ember accent and the same
+   two glows. Hover/selection use a tint of whatever accent is live. */
+[data-theme="light"]{
+  color-scheme:light;
+  --accent-soft:rgba(233,98,47,.10);
+  --magenta-soft:rgba(196,42,99,.08);
+
+  --page:#F2EDE7;
+  --bg:#FBF8F4;
+  --card:rgba(255,255,255,.90);
+  --chip:rgba(31,22,16,.06);
+  --hairline:rgba(31,22,16,.10);
+  --edge-a:rgba(31,22,16,.13);
+  --edge-b:rgba(31,22,16,.05);
+
+  --win-bg:#FFFDFA;
+  --win-border:rgba(31,22,16,.12);
+  --win-shadow:0 26px 60px rgba(74,45,26,.18);
+  --titlebar-bg:#F7F1EA;
+  --row-hover:#FFFFFF;
+  --row-sel:color-mix(in srgb, var(--accent) 7%, #FFFFFF);
+  --row-shadow:0 12px 26px rgba(74,45,26,.12);
+  --content-bg:rgba(31,22,16,.035);
+  --field-bg:#FFFFFF;
+  --field-edge:inset 0 0 0 1px rgba(31,22,16,.09);
+  --menubar:rgba(255,255,255,.72);
+  --toast-bg:rgba(255,255,255,.94);
+  --toast-shadow:0 12px 26px rgba(74,45,26,.16);
+  --sheen:rgba(255,255,255,.85);
+  --pal-border:rgba(31,22,16,.12);
+  --pal-border-hover:rgba(31,22,16,.26);
+  --pal-on:#1A130E;
+  --swatch-ring:rgba(0,0,0,.14);
+  --tile-shadow:0 8px 18px rgba(150,60,20,.18);
+  --shadow-primary:0 6px 16px rgba(150,60,20,.22);
+  --icon-shadow:0 10px 24px rgba(74,45,26,.22);
+  --glyph-filter:none;
+  --star:#D99B00;
+  --danger:#B3261E;
+  --danger-bg:rgba(179,38,30,.10);
+
+  --text:rgba(26,19,14,.94);
+  --text-2:rgba(26,19,14,.64);
+  --text-3:rgba(26,19,14,.44);
+  --accent-ink:color-mix(in srgb, var(--accent) 82%, #2B1408);
+
+  --warn:#A95A08; --ok:#11784A;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+body{padding:56px 40px 120px}
+code{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:.92em;color:var(--text-2)}
+.ico{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round;flex:none;display:inline-block;vertical-align:-.12em}
+.hidden{position:absolute;width:0;height:0;overflow:hidden}
+/* Kopie's app icon — rendered exactly as shipped. Not redrawn, not tinted. */
+.appicon{display:block;border-radius:22%;flex:none}
+
+/* ---------- canvas ---------- */
+.canvas{position:relative;background:var(--bg);overflow:hidden;isolation:isolate}
+.canvas::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(circle 640px at 10% -6%,  var(--accent-soft) 0%, transparent 70%),
+    radial-gradient(circle 720px at 108% 112%, var(--magenta-soft) 0%, transparent 70%)}
+.canvas>*{position:relative;z-index:1}
+
+/* ---------- card ---------- */
+.card{position:relative;background:var(--card);border-radius:var(--r-card)}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:linear-gradient(180deg,var(--edge-a),var(--edge-b));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude;pointer-events:none}
+.card.flat::before{display:none}
+
+/* ---------- chip ---------- */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-meta);font-weight:500;
+  padding:5px 12px;border-radius:var(--r-pill);background:var(--chip);color:var(--text-2);white-space:nowrap;
+  border:0;cursor:pointer;transition:transform var(--d-quick) var(--quick)}
+.chip:hover{color:var(--text)}
+.chip.on{background:var(--grad);color:#fff}
+.chip .ico{width:12px;height:12px}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-meta);font-weight:600;
+  padding:7px 14px;border-radius:var(--r-pill);border:0;cursor:pointer;
+  background:var(--chip);color:var(--text-2);
+  transition:transform var(--d-quick) var(--quick)}
+.btn:hover{color:var(--text)}
+.btn.primary{background:var(--grad);color:#fff;box-shadow:var(--shadow-primary)}
+.btn.ghost{background:transparent;padding:6px 4px}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;
+  border-radius:var(--r-ctl);background:transparent;border:0;color:var(--text-3);cursor:pointer;
+  font-size:14px;transition:background var(--d-quick) linear}
+.icon-btn:hover{background:var(--chip);color:var(--text)}
+.icon-btn.on{color:var(--accent-ink)}
+.icon-btn.star.on{color:var(--star)}
+
+/* ---------- sidebar (Kopie's nav — stays on the left) ---------- */
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;
+  font-size:13px;color:var(--text-2);cursor:pointer;
+  transition:background var(--d-smooth) var(--smooth)}
+.nav-item .ico{font-size:15px}
+.nav-item:hover{background:var(--chip);color:var(--text)}
+.nav-item.on{background:var(--grad);color:#fff;font-weight:500}
+.nav-item .badge{margin-left:auto;font-size:10px;font-variant-numeric:tabular-nums;color:inherit;opacity:.7}
+
+/* ============================================================
+   PAGE FRAME (the spec sheet — not part of the app)
+   ============================================================ */
+.page-head{max-width:1180px;margin:0 auto 34px}
+.page-head h1{font-size:34px;margin:0 0 6px;letter-spacing:-.02em}
+.page-head h1 em{font-style:normal;background:var(--grad-h);-webkit-background-clip:text;background-clip:text;color:transparent}
+.page-head p{margin:0;color:var(--text-2);font-size:14px;line-height:1.55;max-width:76ch}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--text-3);margin-bottom:14px;flex-wrap:wrap}
+.kicker b{color:var(--accent-ink);font-weight:600}
+section{max-width:1180px;margin:0 auto 64px}
+h2.sect{font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+h2.sect span.n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;
+  background:var(--grad);color:#fff;font-size:12px;font-weight:700}
+p.sect-sub{margin:0 0 22px;color:var(--text-2);font-size:13px;max-width:80ch;line-height:1.55}
+.note{max-width:1180px;margin:0 auto 44px;padding:16px 18px;display:grid;gap:10px}
+.note h3{margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.note ul{margin:0;padding-left:18px;color:var(--text-2);font-size:13px;line-height:1.7}
+.note ul b{color:var(--text)}
+
+/* palette picker */
+.pal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.pal{text-align:left;background:transparent;border:1px solid var(--pal-border);border-radius:12px;
+  padding:8px;cursor:pointer;transition:border-color var(--d-quick) linear,transform var(--d-quick) var(--quick)}
+.pal:hover{transform:scale(1.01);border-color:var(--pal-border-hover)}
+.pal.on{border-color:var(--pal-on);box-shadow:0 0 0 1px var(--pal-on) inset}
+.pal .bar{height:44px;border-radius:8px;margin-bottom:7px}
+.pal .nm{font-size:12px;font-weight:600;color:var(--text)}
+.pal .hx{font-size:10px;color:var(--text-3);font-family:"SF Mono",ui-monospace,Menlo,monospace;line-height:1.5}
+
+/* ============================================================
+   WINDOW CHROME
+   ============================================================ */
+.win{border-radius:14px;overflow:hidden;box-shadow:var(--win-shadow);
+  border:1px solid var(--win-border);background:var(--win-bg)}
+.win.dark{background:var(--win-bg)}
+.titlebar{display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;
+  background:var(--titlebar-bg);border-bottom:1px solid var(--hairline)}
+.lights{display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.16)}
+.lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+.titlebar .t{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--text-2)}
+
+/* ============================================================
+   APP PIECES
+   ============================================================ */
+.page-header{padding:24px 24px 0}
+.page-header h1{margin:0 0 2px;font-size:var(--t-page);font-weight:700;letter-spacing:-.02em}
+.page-header p{margin:0;font-size:13px;color:var(--text-2)}
+
+.row{display:flex;align-items:center;gap:14px;padding:10px 12px;background:var(--card);
+  border-radius:var(--r-row);cursor:pointer;
+  transition:transform var(--d-smooth) var(--smooth),box-shadow var(--d-smooth) var(--smooth),background var(--d-quick) linear}
+.row::before{border-radius:var(--r-row)}
+.row:hover{transform:scale(1.006);box-shadow:var(--row-shadow);background:var(--row-hover)}
+.row.sel{background:var(--row-sel)}
+.tile{width:44px;height:44px;border-radius:var(--r-tile);flex:none;display:grid;place-items:center;
+  background:var(--chip);color:var(--text-2);font-size:18px;overflow:hidden}
+.tile.grad{background:var(--grad);color:#fff;box-shadow:var(--tile-shadow)}
+.tile.swatch{background:#4F46E5;box-shadow:inset 0 0 0 1px var(--swatch-ring)}
+.tile.warn{background:color-mix(in srgb, var(--warn) 16%, transparent);color:var(--warn)}
+.tile.thumb{background:linear-gradient(140deg,#5c3b2f,#7a3c5a 55%,#c96a7a)}
+.row-main{min-width:0;flex:1}
+.row-title{font-size:var(--t-row);font-weight:500;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-title .flags{display:inline-flex;gap:5px;align-items:center;margin-right:6px;font-size:10px;vertical-align:1px}
+.row-meta{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:var(--t-meta);color:var(--text-3);
+  white-space:nowrap;overflow:hidden}
+.row-meta .app{color:var(--text-2);display:inline-flex;align-items:center;gap:4px}
+.row-meta .appdot{width:11px;height:11px;border-radius:3px;background:var(--chip);display:inline-block}
+.row-meta .rich{color:var(--accent-ink)}
+.row-actions{display:flex;gap:2px;opacity:0;transition:opacity var(--d-quick) linear}
+.row:hover .row-actions,.row.sel .row-actions{opacity:1}
+
+.group-label{display:flex;align-items:center;gap:8px;margin:18px 2px 8px;font-size:var(--t-meta);
+  font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3)}
+.group-label:first-child{margin-top:0}
+.group-label .count{margin-left:auto;text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+
+.field{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:10px;
+  background:var(--field-bg);box-shadow:var(--field-edge);color:var(--text-3);font-size:13px}
+.field .ico{font-size:14px}
+.field input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:inherit}
+.field.focus{box-shadow:0 0 0 1px var(--accent)}
+
+.eyebrow{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
+.meta-list{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:var(--t-meta)}
+.meta-list dt{color:var(--text-3)}
+.meta-list dd{margin:0;color:var(--text-2);font-variant-numeric:tabular-nums}
+.content-box{border-radius:12px;background:var(--content-bg);padding:14px;
+  font-size:13px;line-height:1.6;color:var(--text-2)}
+
+.toast{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:var(--r-pill);
+  background:var(--toast-bg);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--hairline);
+  box-shadow:var(--toast-shadow);font-size:13px;font-weight:500}
+.toast .ok{color:var(--ok)} .toast .warn{color:var(--warn)}
+.toast .act{color:var(--accent-ink);font-weight:600}
+
+.empty{display:grid;place-items:center;gap:12px;text-align:center;padding:56px 24px}
+.empty .ico{font-size:40px;color:var(--text-3);stroke-width:1.2}
+.empty h3{margin:0;font-size:14px;font-weight:600}
+.empty p{margin:0;font-size:12px;color:var(--text-2);max-width:30ch;line-height:1.5}
+
+.skel{background:var(--chip);border-radius:8px;position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;top:0;left:-70%;width:70%;height:100%;
+  background:linear-gradient(90deg,transparent,var(--sheen),transparent);
+  animation:sweep 1.4s linear infinite}
+@keyframes sweep{to{left:100%}}
+/* ---------- appearance switch (chrome, not part of the app) ---------- */
+.theme-switch{position:fixed;top:16px;right:18px;z-index:80;display:flex;gap:2px;padding:3px;
+  border-radius:var(--r-pill);background:var(--toast-bg);backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);border:1px solid var(--hairline);box-shadow:var(--toast-shadow)}
+.theme-switch button{font:inherit;font-size:11px;font-weight:600;display:inline-flex;align-items:center;
+  gap:6px;padding:6px 11px;border:0;border-radius:var(--r-pill);background:transparent;color:var(--text-2);
+  cursor:pointer;transition:background var(--d-quick) linear}
+.theme-switch button:hover{color:var(--text)}
+.theme-switch button.on{background:var(--grad);color:#fff;box-shadow:var(--shadow-primary)}
+.theme-switch .ico{font-size:12px}
+
+/* ---------- light / dark pair, shown side by side ---------- */
+.appearance{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.demo{border-radius:12px;overflow:hidden;border:1px solid var(--hairline);background:var(--win-bg)}
+.demo-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 12px;
+  font-size:11px;font-weight:600;color:var(--text-2);background:var(--titlebar-bg);
+  border-bottom:1px solid var(--hairline)}
+.demo-top span:last-child{font-weight:400;color:var(--text-3)}
+.demo-canvas{padding:12px;display:grid;gap:10px}
+
+/* shipped template glyph: inverted on dark chrome, as-is on light chrome */
+.menuglyph{filter:var(--glyph-filter)}
+.btn.danger{background:var(--danger-bg);color:var(--danger)}
+
+@media (prefers-reduced-motion:reduce){
+  .skel::after{animation:none}
+  *{transition-duration:1ms !important}
+}
+</style>
+</head>
+<body>
+
+<div class="theme-switch" role="group" aria-label="Appearance">
+  <button type="button" data-set-theme="light"><svg class="ico"><use href="#i-sun"/></svg>Light</button>
+  <button type="button" data-set-theme="dark"><svg class="ico"><use href="#i-moon"/></svg>Dark</button>
+</div>
+
+<svg class="hidden" aria-hidden="true">
+  <symbol id="i-tray" viewBox="0 0 24 24"><path d="M4 13h4l1.2 2h5.6L16 13h4"/><path d="M6 5h12l3 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 15.5h4"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.4"/><path d="M4.5 17.5 9.5 13l3.5 3.4L16 14l3.5 3.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.6V12l3 1.9"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4.4l2.35 4.9 5.15.72-3.75 3.6.9 5.2L12 16.3l-4.65 2.52.9-5.2-3.75-3.6 5.15-.72z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9.5 4h5l-.8 5.6 2.8 2.9H7.5l2.8-2.9z"/><path d="M12 12.5V20"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8.2" cy="12" r="3.2"/><path d="M11.4 12H20M17 12v3M20 12v2.2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.3M12 18.7V21M4.6 7.6l2 1.15M17.4 15.25l2 1.15M4.6 16.4l2-1.15M17.4 8.75l2-1.15"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M15.6 15.6 20 20"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="8.6" y="6.5" width="2.6" height="11" rx="1.1"/><rect x="12.8" y="6.5" width="2.6" height="11" rx="1.1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.8 7.5h14.4M9.6 7.5V5.6h4.8v1.9M6.6 7.5 7.6 19h8.8l1-11.5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9.8h9.2a1.4 1.4 0 0 1 1.4 1.4v8.4a1.4 1.4 0 0 1-1.4 1.4H9a1.4 1.4 0 0 1-1.4-1.4v-8.4A1.4 1.4 0 0 1 9 9.8z"/><path d="M15.2 6.2H6.4A1.4 1.4 0 0 0 5 7.6v8.8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M8.4 12.4l2.5 2.5 4.7-5.2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M9.6 9.6l4.8 4.8M14.4 9.6l-4.8 4.8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5.8" y="10.6" width="12.4" height="9" rx="2.2"/><path d="M9 10.6V8.4a3 3 0 0 1 6 0v2.2"/></symbol>
+  <symbol id="i-expire" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8.5V12l2.6 1.6M9 20.4l-1.4 1.3M15 20.4l1.4 1.3"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M9.5 8 5.5 12l4 4M14.5 8l4 4-4 4"/></symbol>
+  <symbol id="i-broom" viewBox="0 0 24 24"><path d="M15 4l5 5-6.5 6.5-5-5z"/><path d="M8.5 10.5 4 20l6-2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.6"/><path d="M12 3.2v2.1M12 18.7v2.1M3.2 12h2.1M18.7 12h2.1M5.8 5.8l1.5 1.5M16.7 16.7l1.5 1.5M5.8 18.2l1.5-1.5M16.7 7.3l1.5-1.5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.2A7.6 7.6 0 0 1 9.8 5a7.6 7.6 0 1 0 9.2 9.2z"/></symbol>
+</svg>
+
+<header class="page-head">
+  <div class="kicker"><b>Kopie</b> redesign prototype v2 · <b>light + dark</b> · mechanics from Airpisode · <b>palette of its own</b></div>
+  <h1>Kopie in <em>Ember</em>.</h1>
+  <p>Kopie's own colours now — a tangerine→raspberry gradient pulled straight out of Kopie's existing app icon, which
+  stays exactly as it is. Airpisode supplied the <em>mechanics</em>: near-black canvas with two soft glows,
+  translucent cards with a gradient hairline, capsule chips, gradient tiles, one spring vocabulary. The navigation
+  does not move — it stays on the left. Both appearances are real: light is warm paper with white surfaces, dark is
+  the near-black canvas — same components, same accent, one switch at the top right. Click any palette in section 0
+  to preview all four across the whole board.</p>
+</header>
+
+<div class="note card">
+  <h3>v2 changes — as requested</h3>
+  <ul>
+    <li><b>New palette, Kopie's own.</b> No violet, no orchid. Default is <b>Ember · Rose</b>
+      (<code>#E9622F</code> → <code>#C42A63</code>), read off the peach→rose gradient already in Kopie's icon.
+      Three alternates are previewable — click and the whole board repaints.</li>
+    <li><b>The app icon is untouched.</b> Every place the old prototype invented a mark now renders the shipped
+      <code>assets/icon-sources/design10.png</code> exactly as it is. I did not redraw, recolour, or re-shadow it.
+      The menu-bar item uses the shipped <code>KopieMenuTemplate.png</code> (a template image, so it is inverted the
+      way macOS tints one on a dark bar — the file itself is unchanged).</li>
+    <li><b>The nav stays on the left.</b> The floating dock is gone. Kopie keeps its sidebar, in place, in the same
+      order: All · Text · Images · Files · Today · Favorites · Pinned · Sensitive, with Settings pinned to the bottom.</li>
+    <li><b>Light and dark are both first-class.</b> Every surface is a token with two values, so the whole app — windows,
+      popover, settings, onboarding, states — swaps between the near-black canvas and warm paper
+      (<code>#FBF8F4</code>) without a single component branching on appearance. Use the switch at the top right; the
+      pair in section 0 shows both at once.</li>
+  </ul>
+</div>
+
+<!-- ============================== TOKENS ============================== -->
+<section id="tokens">
+  <h2 class="sect"><span class="n">0</span> Palette, tokens &amp; appearance</h2>
+  <p class="sect-sub">The gradient runs top-to-bottom through every gradient surface (chips, tiles, buttons,
+  selection) and its two stops also drive the canvas glows. Kopie's radii collapse from seven values onto three.</p>
+
+  <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:18px;align-items:start">
+    <div class="card" style="padding:18px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+        <span class="eyebrow">Gradient</span>
+        <span style="font-size:11px;color:var(--text-3)">active: <b id="palname" style="color:var(--text-2)">Ember · Rose</b> — click to preview</span>
+      </div>
+      <div class="pal-grid">
+        <button class="pal on" data-pal="ember" data-a="#E9622F" data-b="#C42A63"
+                data-ga="rgba(233,98,47,.20)" data-gb="rgba(196,42,99,.16)">
+          <div class="bar" style="background:linear-gradient(180deg,#E9622F,#C42A63)"></div>
+          <div class="nm">Ember · Rose</div><div class="hx">#E9622F<br>#C42A63</div>
+        </button>
+        <button class="pal" data-pal="ember2" data-a="#D9541F" data-b="#A8295A"
+                data-ga="rgba(217,84,31,.20)" data-gb="rgba(168,41,90,.16)">
+          <div class="bar" style="background:linear-gradient(180deg,#D9541F,#A8295A)"></div>
+          <div class="nm">Ember · Deep</div><div class="hx">#D9541F<br>#A8295A</div>
+        </button>
+        <button class="pal" data-pal="apricot" data-a="#E5A02B" data-b="#D0522F"
+                data-ga="rgba(229,160,43,.20)" data-gb="rgba(208,82,47,.16)">
+          <div class="bar" style="background:linear-gradient(180deg,#E5A02B,#D0522F)"></div>
+          <div class="nm">Apricot · Ember</div><div class="hx">#E5A02B<br>#D0522F</div>
+        </button>
+        <button class="pal" data-pal="clic" data-a="#2E7FE0" data-b="#7B3FD1"
+                data-ga="rgba(46,127,224,.20)" data-gb="rgba(123,63,209,.16)">
+          <div class="bar" style="background:linear-gradient(180deg,#2E7FE0,#7B3FD1)"></div>
+          <div class="nm">Signal · Cliché</div><div class="hx">#2E7FE0<br>#7B3FD1</div>
+        </button>
+      </div>
+      <p style="margin:12px 0 0;font-size:11px;color:var(--text-3);line-height:1.6">
+        The first three are warm — they belong to the peach clipboard in Kopie's icon, and each keeps white text legible
+        on the gradient (≥3:1 on the light stop, same bar Airpisode sets). The fourth is included only as a
+        deliberately generic cool option, to see how clearly the warm ones win.</p>
+    </div>
+
+    <div style="display:grid;gap:18px;align-content:start">
+      <div class="card" style="padding:18px">
+        <div class="eyebrow" style="margin-bottom:12px">Surface</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:11px;color:var(--text-3)">
+          <div><div style="height:44px;border-radius:10px;background:var(--grad)"></div><div style="margin-top:6px">accent pair</div></div>
+          <div><div style="height:44px;border-radius:10px;background:var(--bg);border:1px solid var(--hairline)"></div><div style="margin-top:6px">background</div></div>
+          <div><div style="height:44px;border-radius:10px;background:var(--chip);border:1px solid var(--hairline)"></div><div style="margin-top:6px">chip / card</div></div>
+          <div><div style="height:44px;border-radius:10px;background:color-mix(in srgb, var(--warn) 16%, transparent);border:1px solid var(--hairline)"></div><div style="margin-top:6px">warn</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:18px">
+        <div class="eyebrow" style="margin-bottom:12px">Type · four sizes, two weights</div>
+        <div style="font-size:26px;font-weight:700;letter-spacing:-.02em">History</div>
+        <div style="font-size:17px;font-weight:600;margin-top:8px">Today</div>
+        <div style="font-size:14px;font-weight:500;margin-top:8px">Weekly sync notes: ship the sentinel</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:8px">Text · 5:10 pm · 74 chars</div>
+      </div>
+
+      <div class="card" style="padding:18px">
+        <div class="eyebrow" style="margin-bottom:12px">Radii · Motion</div>
+        <div style="display:flex;align-items:flex-end;gap:12px">
+          <div style="width:64px;height:52px;border-radius:16px;background:var(--chip);display:grid;place-items:end center;font-size:10px;color:var(--text-3);padding-bottom:4px">16 card</div>
+          <div style="width:56px;height:52px;border-radius:14px;background:var(--chip);display:grid;place-items:end center;font-size:10px;color:var(--text-3);padding-bottom:4px">14 row</div>
+          <div style="width:48px;height:48px;border-radius:12px;background:var(--chip);display:grid;place-items:end center;font-size:10px;color:var(--text-3);padding-bottom:4px">12 tile</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:14px;line-height:1.8">
+          <div><b style="color:var(--text-2)">smooth</b> 0.45s · layout &amp; selection</div>
+          <div><b style="color:var(--text-2)">quick</b> 0.28s · hover &amp; press</div>
+          <div><b style="color:var(--text-2)">gentle</b> 0.60s · page reveal, toast</div>
+          <div>all critically damped — no overshoot, ever</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:18px;margin-top:18px">
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span class="eyebrow">Appearance · light &amp; dark</span>
+      <span style="font-size:11px;color:var(--text-3)">both are live below — each panel keeps its own tokens; the switch at the top right flips the whole board</span>
+    </div>
+    <div class="appearance">
+      <div class="demo" data-theme="light">
+        <div class="demo-top"><span>Light</span><span>paper #FBF8F4</span></div>
+        <div class="demo-canvas canvas">
+          <div class="row sel" style="padding:8px 10px">
+            <div class="tile grad" style="width:34px;height:34px;font-size:14px"><svg class="ico"><use href="#i-doc"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:12px">Weekly sync notes</div>
+              <div class="row-meta"><span>Text</span>·<span>5:10 pm</span>·<span>74 chars</span></div>
+            </div>
+            <button class="icon-btn on" style="width:24px;height:24px;font-size:12px"><svg class="ico"><use href="#i-star"/></svg></button>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="chip on">Plain Text</span><span class="chip">Formatted</span>
+            <span style="flex:1"></span><span class="btn primary" style="padding:5px 12px">Copy</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-3);line-height:1.5">Canvas · card · hairline · text all resolve from the same tokens.</div>
+        </div>
+      </div>
+      <div class="demo" data-theme="dark">
+        <div class="demo-top"><span>Dark</span><span>canvas #000000</span></div>
+        <div class="demo-canvas canvas">
+          <div class="row sel" style="padding:8px 10px">
+            <div class="tile grad" style="width:34px;height:34px;font-size:14px"><svg class="ico"><use href="#i-doc"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:12px">Weekly sync notes</div>
+              <div class="row-meta"><span>Text</span>·<span>5:10 pm</span>·<span>74 chars</span></div>
+            </div>
+            <button class="icon-btn on" style="width:24px;height:24px;font-size:12px"><svg class="ico"><use href="#i-star"/></svg></button>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="chip on">Plain Text</span><span class="chip">Formatted</span>
+            <span style="flex:1"></span><span class="btn primary" style="padding:5px 12px">Copy</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-3);line-height:1.5">Canvas · card · hairline · text all resolve from the same tokens.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== MAIN WINDOW ============================== -->
+<section id="main">
+  <h2 class="sect"><span class="n">1</span> Main window — before &amp; after</h2>
+  <p class="sect-sub">Three columns, same order, same information. The sidebar stays exactly where it is; only its
+  surface changed — the selected category is now a gradient pill instead of the system's grey fill. The list's rows
+  became cards with a gradient tile, and the detail rail gained a gradient primary action.</p>
+
+  <div style="display:grid;gap:34px">
+    <div>
+      <div class="eyebrow" style="margin-bottom:10px">Before</div>
+      <div class="win" style="width:100%">
+        <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="t">Kopie</span></div>
+        <img src="../../assets/screenshots/main-window.png" alt="Kopie main window, current design" style="display:block;width:100%" />
+      </div>
+    </div>
+
+    <div>
+      <div class="eyebrow" style="margin-bottom:10px">After</div>
+      <div class="win dark canvas" style="width:100%">
+        <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="t">Kopie</span></div>
+
+        <div style="display:flex;height:640px">
+          <!-- SIDEBAR: unmoved, on the left -->
+          <nav style="width:194px;flex:none;padding:14px 10px 12px;border-right:1px solid var(--hairline);
+                      display:flex;flex-direction:column;gap:2px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:9px;padding:2px 8px 14px">
+              <img class="appicon" src="../../assets/icon-sources/design10.png" alt="Kopie" style="width:22px;height:22px" />
+              <span style="font-size:14px;font-weight:600">Kopie</span>
+            </div>
+
+            <div class="eyebrow" style="padding:0 10px 8px">History</div>
+
+            <span class="nav-item on"><svg class="ico"><use href="#i-tray"/></svg>All<span class="badge">248</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-doc"/></svg>Text<span class="badge">192</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-photo"/></svg>Images<span class="badge">31</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-folder"/></svg>Files<span class="badge">12</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-clock"/></svg>Today<span class="badge">18</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-star"/></svg>Favorites<span class="badge">6</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-pin"/></svg>Pinned<span class="badge">2</span></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-key"/></svg>Sensitive<span class="badge">3</span></span>
+
+            <span style="flex:1"></span>
+            <span class="nav-item"><svg class="ico"><use href="#i-gear"/></svg>Settings…</span>
+          </nav>
+
+          <!-- LIST -->
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--hairline)">
+            <div class="page-header">
+              <h1>History</h1>
+              <p>Everything you copy, available when you need it.</p>
+            </div>
+
+            <div style="padding:14px 24px 0;display:flex;gap:10px;align-items:center">
+              <div class="field focus" style="flex:1">
+                <svg class="ico"><use href="#i-search"/></svg>
+                <input placeholder="Search clipboard…" />
+                <span style="font-size:11px;color:var(--text-3)">⌘F</span>
+              </div>
+              <button class="chip"><svg class="ico"><use href="#i-clock"/></svg>Today</button>
+            </div>
+
+            <div style="flex:1;overflow:hidden;padding:8px 18px 18px">
+              <div class="group-label" style="margin-left:6px">Pinned<span class="count">2 items</span></div>
+              <div style="display:grid;gap:8px">
+                <div class="row">
+                  <div class="tile thumb"><svg class="ico"><use href="#i-photo"/></svg></div>
+                  <div class="row-main">
+                    <div class="row-title"><span class="flags"><svg class="ico" style="font-size:10px;color:var(--accent)"><use href="#i-pin"/></svg></span>Untitled — 1920×1080 screenshot</div>
+                    <div class="row-meta"><span class="app"><i class="appdot"></i>Safari</span>·<span>Image</span>·<span>5:10 pm</span>·<span>1920×1080</span></div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="icon-btn on"><svg class="ico"><use href="#i-pin"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-copy"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="tile swatch"></div>
+                  <div class="row-main">
+                    <div class="row-title">#4F46E5</div>
+                    <div class="row-meta"><span class="app"><i class="appdot"></i>Figma</span>·<span>Text</span>·<span>5:10 pm</span>·<span>7 chars</span></div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg class="ico"><use href="#i-pin"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-copy"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="group-label">Today<span class="count">4 items</span></div>
+              <div style="display:grid;gap:8px">
+                <div class="row sel">
+                  <div class="tile grad"><svg class="ico"><use href="#i-doc"/></svg></div>
+                  <div class="row-main">
+                    <div class="row-title">Weekly sync notes: ship the sentinel, review retention defaults, celebrate</div>
+                    <div class="row-meta"><span class="app"><i class="appdot"></i>Notes</span>·<span>Text</span>·<span class="rich">Rich</span>·<span>5:10 pm</span>·<span>74 chars</span>·<span>3×</span></div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="icon-btn star"><svg class="ico"><use href="#i-star"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-copy"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="tile"><svg class="ico"><use href="#i-code"/></svg></div>
+                  <div class="row-main">
+                    <div class="row-title">{"name":"kopie","version":"2.4.3","private":true}</div>
+                    <div class="row-meta"><span class="app"><i class="appdot"></i>Code</span>·<span>Text</span>·<span>5:10 pm</span>·<span>53 chars</span>·<span class="rich">JSON</span></div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg class="ico"><use href="#i-pin"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-copy"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="tile warn"><svg class="ico"><use href="#i-key"/></svg></div>
+                  <div class="row-main">
+                    <div class="row-title"><span class="flags"><svg class="ico" style="font-size:10px;color:var(--warn)"><use href="#i-key"/></svg></span>••••••••••••</div>
+                    <div class="row-meta"><span class="app"><i class="appdot"></i>1Password</span>·<span>Text</span>·<span style="color:var(--warn)">Sensitive</span>·<span>5:10 pm</span>·<span>40 chars</span></div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg class="ico"><use href="#i-expire"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-copy"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="tile"><svg class="ico"><use href="#i-folder"/></svg></div>
+                  <div class="row-main">
+                    <div class="row-title">Kopie-2.4.3.dmg, Kopie.icns</div>
+                    <div class="row-meta"><span class="app"><i class="appdot"></i>Finder</span>·<span>Files</span>·<span>5:09 pm</span>·<span>2 files</span></div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="icon-btn"><svg class="ico"><use href="#i-pin"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-copy"/></svg></button>
+                    <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="group-label">Yesterday<span class="count">12 items</span></div>
+            </div>
+          </div>
+
+          <!-- DETAIL -->
+          <aside style="width:340px;flex:none;padding:20px;display:flex;flex-direction:column;gap:14px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="eyebrow">Text · Rich</span>
+              <span style="flex:1"></span>
+              <button class="icon-btn" title="Pause monitoring"><svg class="ico"><use href="#i-pause"/></svg></button>
+            </div>
+
+            <div style="display:flex;gap:6px">
+              <button class="chip on">Plain Text</button>
+              <button class="chip">Formatted</button>
+              <button class="chip"><svg class="ico"><use href="#i-code"/></svg>Edit</button>
+            </div>
+
+            <div class="content-box" style="min-height:150px">
+              Weekly sync notes: ship the sentinel, review retention defaults, celebrate
+            </div>
+
+            <div class="card" style="padding:14px">
+              <dl class="meta-list" style="margin:0">
+                <dt>Application</dt><dd>Notes</dd>
+                <dt>First Copy</dt><dd>30 Sep 2026 at 5:10:08 pm</dd>
+                <dt>Last Copy</dt><dd>19 Oct 2026 at 9:41:02 am</dd>
+                <dt>Copies</dt><dd>3</dd>
+                <dt>Characters</dt><dd>74</dd>
+                <dt>Size</dt><dd>74 bytes</dd>
+                <dt>Language</dt><dd>English</dd>
+              </dl>
+            </div>
+
+            <span style="flex:1"></span>
+
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn primary" style="padding:9px 18px"><svg class="ico" style="font-size:13px"><use href="#i-copy"/></svg>Copy</button>
+              <span style="width:1px;height:22px;background:var(--hairline)"></span>
+              <button class="icon-btn star"><svg class="ico"><use href="#i-star"/></svg></button>
+              <button class="icon-btn"><svg class="ico"><use href="#i-pin"/></svg></button>
+              <span style="flex:1"></span>
+              <button class="icon-btn"><svg class="ico"><use href="#i-trash"/></svg></button>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== POPOVER ============================== -->
+<section id="popover">
+  <h2 class="sect"><span class="n">2</span> Menu-bar popover</h2>
+  <p class="sect-sub">440 pt wide, 360 pt of list, unchanged dimensions. The header shows the real app icon; the
+  status item in the menu bar is the shipped template glyph. Selected row carries the gradient tile, so the thing
+  Enter will paste is unmistakable.</p>
+
+  <div class="canvas" style="border-radius:14px;padding:26px;display:flex;flex-direction:column;align-items:flex-end;border:1px solid var(--hairline)">
+    <div style="width:620px;display:flex;align-items:center;gap:14px;height:26px;padding:0 10px;
+                border-radius:8px;background:var(--menubar);font-size:12px;color:var(--text-2);margin-bottom:8px">
+      <span>Finder</span><span>File</span><span>Edit</span><span>View</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:12px">
+        <!-- shipped KopieMenuTemplate.png; template images are system-tinted, so it is inverted for a dark bar -->
+        <img class="menuglyph" src="../../assets/icon-sources/KopieMenuTemplate.png" alt="" style="width:15px;height:15px;opacity:.9" />
+        <span>9:41 AM</span>
+      </span>
+    </div>
+
+    <div class="win dark canvas" style="width:440px;border-radius:12px">
+      <div style="display:flex;align-items:center;gap:9px;padding:16px">
+        <img class="appicon" src="../../assets/icon-sources/design10.png" alt="Kopie" style="width:18px;height:18px" />
+        <span style="font-size:14px;font-weight:600">Kopie</span>
+        <span style="flex:1"></span>
+        <button class="icon-btn"><svg class="ico"><use href="#i-pause"/></svg></button>
+      </div>
+      <div style="height:1px;background:var(--hairline)"></div>
+
+      <div style="padding:12px 16px 10px">
+        <div class="field focus">
+          <svg class="ico"><use href="#i-search"/></svg>
+          <input placeholder="Search clipboard…" />
+          <button class="icon-btn" style="width:20px;height:20px;font-size:12px"><svg class="ico"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+
+      <div style="padding:0 16px 8px;max-height:360px;overflow:hidden">
+        <div class="group-label" style="margin-left:2px;margin-top:6px">Today</div>
+        <div style="display:grid;gap:6px">
+          <div class="row sel" style="padding:8px 10px">
+            <div class="tile grad" style="width:36px;height:36px;font-size:15px"><svg class="ico"><use href="#i-doc"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13px">Weekly sync notes: ship the sentinel…</div>
+              <div class="row-meta"><span>Text</span>·<span>5:10 pm</span>·<span>74 chars</span></div>
+            </div>
+            <span class="row-actions" style="align-items:center;gap:2px;display:flex">
+              <button class="icon-btn" style="width:24px;height:24px;font-size:12px"><svg class="ico"><use href="#i-copy"/></svg></button>
+              <button class="icon-btn" style="width:24px;height:24px;font-size:12px"><svg class="ico"><use href="#i-star"/></svg></button>
+            </span>
+          </div>
+
+          <div class="row" style="padding:8px 10px">
+            <div class="tile thumb" style="width:36px;height:36px;font-size:15px"><svg class="ico"><use href="#i-photo"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13px">Screenshot — 1920×1080</div>
+              <div class="row-meta"><span>Image</span>·<span>5:10 pm</span>·<span>1920×1080</span></div>
+            </div>
+          </div>
+
+          <div class="row" style="padding:8px 10px">
+            <div class="tile swatch" style="width:36px;height:36px"></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13px">#4F46E5</div>
+              <div class="row-meta"><span>Text</span>·<span>5:10 pm</span>·<span>7 chars</span></div>
+            </div>
+          </div>
+
+          <div class="row" style="padding:8px 10px">
+            <div class="tile" style="width:36px;height:36px;font-size:15px"><svg class="ico"><use href="#i-code"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13px">{"name":"kopie","version":"2.4.3"…}</div>
+              <div class="row-meta"><span>Text</span>·<span>5:10 pm</span>·<span>53 chars</span></div>
+            </div>
+          </div>
+
+          <div class="row" style="padding:8px 10px">
+            <div class="tile warn" style="width:36px;height:36px;font-size:15px"><svg class="ico"><use href="#i-key"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13px">••••••••••••</div>
+              <div class="row-meta"><span style="color:var(--warn)">Sensitive</span>·<span>5:10 pm</span>·<span>40 chars</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group-label" style="margin-left:2px">Yesterday</div>
+        <div style="display:grid;gap:6px">
+          <div class="row" style="padding:8px 10px">
+            <div class="tile" style="width:36px;height:36px;font-size:15px"><svg class="ico"><use href="#i-doc"/></svg></div>
+            <div class="row-main">
+              <div class="row-title" style="font-size:13px">Kopie keeps everything you copy…</div>
+              <div class="row-meta"><span>Text</span>·<span>9:02 am</span>·<span>76 chars</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--hairline)"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:10px 16px 12px;font-size:11px;color:var(--text-3)">
+        <button class="btn ghost">Open Kopie</button>
+        <button class="btn ghost">Settings…</button>
+        <span style="flex:1"></span>
+        <button class="btn ghost">Select</button>
+        <button class="btn ghost">Clear</button>
+      </div>
+    </div>
+
+    <div style="width:440px;display:flex;justify-content:center;margin-top:-14px">
+      <span class="toast"><svg class="ico ok"><use href="#i-check"/></svg>Copied</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SETTINGS ============================== -->
+<section id="settings">
+  <h2 class="sect"><span class="n">3</span> Settings</h2>
+  <p class="sect-sub">Kopie's six tabs, unchanged in scope. The left rail keeps the native sidebar rhythm with the
+  gradient on the active tab; each group is a card so a single toggle never floats alone in a void.</p>
+
+  <div class="win dark canvas" style="width:100%">
+    <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="t">Settings</span></div>
+    <div style="display:flex;height:520px">
+      <nav style="width:196px;flex:none;padding:14px 12px;border-right:1px solid var(--hairline);display:grid;gap:3px;align-content:start">
+        <span class="nav-item on"><svg class="ico"><use href="#i-gear"/></svg>General</span>
+        <span class="nav-item"><svg class="ico"><use href="#i-tray"/></svg>Clipboard</span>
+        <span class="nav-item"><svg class="ico"><use href="#i-broom"/></svg>Cleanup</span>
+        <span class="nav-item"><svg class="ico"><use href="#i-lock"/></svg>Privacy</span>
+        <span class="nav-item"><svg class="ico"><use href="#i-key"/></svg>Security</span>
+        <span class="nav-item"><svg class="ico"><use href="#i-folder"/></svg>Storage</span>
+      </nav>
+
+      <div style="flex:1;padding:20px 24px;display:grid;gap:14px;align-content:start;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img class="appicon" src="../../assets/icon-sources/design10.png" alt="" style="width:26px;height:26px" />
+          <div>
+            <h1 style="margin:0 0 1px;font-size:20px;font-weight:700">General</h1>
+            <p style="margin:0;font-size:12px;color:var(--text-2)">How Kopie starts, and how you reach it.</p>
+          </div>
+        </div>
+
+        <div class="card" style="padding:6px 16px">
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--hairline)">
+            <div style="flex:1"><div style="font-size:13px">Launch at login</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:2px">Open Kopie when you log in to your Mac</div></div>
+            <span style="width:38px;height:22px;border-radius:999px;background:var(--grad);position:relative;display:block">
+              <i style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#fff"></i></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--hairline)">
+            <div style="flex:1"><div style="font-size:13px">Show menu bar icon</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:2px">Kopie stays available in the menu bar</div></div>
+            <span style="width:38px;height:22px;border-radius:999px;background:var(--grad);position:relative;display:block">
+              <i style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#fff"></i></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--hairline)">
+            <div style="flex:1"><div style="font-size:13px">Global shortcut</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:2px">Opens the picker above whatever is frontmost</div></div>
+            <span class="chip" style="font-family:ui-monospace,Menlo,monospace">⌘ ⇧ V</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 0">
+            <div style="flex:1"><div style="font-size:13px">Start monitoring automatically</div></div>
+            <span style="width:38px;height:22px;border-radius:999px;background:var(--grad);position:relative;display:block">
+              <i style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#fff"></i></span>
+          </div>
+        </div>
+
+        <div class="card" style="padding:16px">
+          <div class="eyebrow" style="margin-bottom:8px">Privacy</div>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-2)">
+            Your clipboard stays on your Mac. Kopie does not upload or share your clipboard history —
+            <span style="background:var(--grad-h);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:600">there is no account, no server, and no telemetry.</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== ONBOARDING ============================== -->
+<section id="onboarding">
+  <h2 class="sect"><span class="n">4</span> First run — five steps</h2>
+  <p class="sect-sub">Same five steps and the same retention control on step 4. The pastel breathing gradient gives
+  way to the near-black canvas, and every appearance of the app mark is Kopie's shipped icon, untouched.</p>
+
+  <div style="margin-bottom:22px">
+    <div class="eyebrow" style="margin-bottom:10px">Before</div>
+    <div class="win" style="width:420px">
+      <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="t">Untitled</span></div>
+      <img src="../../assets/screenshots/landing.png" alt="Kopie onboarding, current design" style="display:block;width:100%" />
+    </div>
+  </div>
+
+  <div class="eyebrow" style="margin-bottom:10px">After</div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+    <!-- step 1 -->
+    <div class="win dark canvas" style="border-radius:12px">
+      <div style="padding:22px 16px;display:grid;justify-items:center;text-align:center;gap:12px;height:300px">
+        <img class="appicon" src="../../assets/icon-sources/design10.png" alt="Kopie" style="width:76px;height:76px;margin-top:16px;box-shadow:var(--icon-shadow)" />
+        <div style="font-size:18px;font-weight:700">Meet Kopie</div>
+        <div style="font-size:12px;color:var(--text-2);line-height:1.5;max-width:24ch">Your clipboard history, always within reach.</div>
+        <span style="flex:1"></span>
+        <div style="display:flex;gap:5px;margin-bottom:6px">
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--grad)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <button class="btn ghost" style="opacity:.45">Back</button><span style="flex:1"></span>
+          <button class="btn primary">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 2 -->
+    <div class="win dark canvas" style="border-radius:12px">
+      <div style="padding:22px 16px;display:grid;justify-items:center;text-align:center;gap:12px;height:300px">
+        <div class="tile grad" style="width:64px;height:64px;font-size:26px;margin-top:16px"><svg class="ico"><use href="#i-tray"/></svg></div>
+        <div style="font-size:18px;font-weight:700">Everything you copy, organized</div>
+        <div style="font-size:12px;color:var(--text-2);line-height:1.5;max-width:26ch">Kopie can save text and images copied on your Mac.</div>
+        <span style="flex:1"></span>
+        <div style="display:flex;gap:5px;margin-bottom:6px">
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--grad)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <button class="btn ghost">Back</button><span style="flex:1"></span>
+          <button class="btn primary">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 3 -->
+    <div class="win dark canvas" style="border-radius:12px">
+      <div style="padding:22px 16px;display:grid;justify-items:center;text-align:center;gap:12px;height:300px">
+        <div class="tile" style="width:64px;height:64px;font-size:26px;margin-top:16px;color:var(--accent)"><svg class="ico"><use href="#i-lock"/></svg></div>
+        <div style="font-size:18px;font-weight:700">Private by design</div>
+        <div style="font-size:12px;color:var(--text-2);line-height:1.5;max-width:24ch">Your clipboard history stays on your Mac.</div>
+        <span style="flex:1"></span>
+        <div style="display:flex;gap:5px;margin-bottom:6px">
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--grad)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <button class="btn ghost">Back</button><span style="flex:1"></span>
+          <button class="btn primary">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 4 -->
+    <div class="win dark canvas" style="border-radius:12px">
+      <div style="padding:14px 12px;display:grid;justify-items:center;text-align:center;gap:7px;height:300px">
+        <div class="tile grad" style="width:56px;height:56px;font-size:24px;margin-top:2px"><svg class="ico"><use href="#i-clock"/></svg></div>
+        <div style="font-size:18px;font-weight:700">How long should we keep things?</div>
+        <div style="font-size:12px;color:var(--text-2);line-height:1.5;max-width:26ch">Change this any time in Settings.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,auto);gap:5px;justify-content:center;margin-top:2px">
+          <button class="chip">1</button><button class="chip">3</button>
+          <button class="chip on">7 days</button>
+          <button class="chip">14</button><button class="chip">30</button><button class="chip">90</button>
+        </div>
+        <span style="flex:1"></span>
+        <div style="display:flex;gap:5px;margin-bottom:2px">
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--grad)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <button class="btn ghost">Back</button><span style="flex:1"></span>
+          <button class="btn primary">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 5 -->
+    <div class="win dark canvas" style="border-radius:12px">
+      <div style="padding:22px 16px;display:grid;justify-items:center;text-align:center;gap:12px;height:300px">
+        <img class="appicon" src="../../assets/icon-sources/design10.png" alt="Kopie" style="width:76px;height:76px;margin-top:16px;box-shadow:var(--icon-shadow)" />
+        <div style="font-size:18px;font-weight:700">You're ready</div>
+        <div style="font-size:12px;color:var(--text-2);line-height:1.5;max-width:24ch">Copy something to get started — then hit
+          <span class="chip" style="font-family:ui-monospace,Menlo,monospace;padding:2px 7px;color:var(--text)">⌘⇧V</span></div>
+        <span style="flex:1"></span>
+        <div style="display:flex;gap:5px;margin-bottom:6px">
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:7px;height:7px;border-radius:50%;background:var(--chip)"></i>
+          <i style="width:9px;height:9px;border-radius:50%;background:var(--grad)"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <button class="btn ghost">Back</button><span style="flex:1"></span>
+          <button class="btn primary" style="padding:8px 18px">Start copying</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== STATES ============================== -->
+<section id="states">
+  <h2 class="sect"><span class="n">5</span> States — empty, masked, loading, confirm</h2>
+  <p class="sect-sub">Kopie's copy is kept word for word; only the surface changed. Empty states get the gradient
+  button the spec asks for, the sensitive mask stays stubbornly orange, and loading borrows the sheen skeleton
+  instead of a spinner.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+    <div class="win dark canvas" style="border-radius:12px;padding:8px">
+      <div class="empty">
+        <svg class="ico"><use href="#i-tray"/></svg>
+        <h3>Nothing copied yet</h3>
+        <p>Copy some text or an image and it will appear here.</p>
+        <button class="btn primary" style="margin-top:6px">Open Settings</button>
+      </div>
+    </div>
+
+    <div class="win dark canvas" style="border-radius:12px;padding:8px">
+      <div class="empty">
+        <svg class="ico"><use href="#i-search"/></svg>
+        <h3>Nothing found</h3>
+        <p>Try searching for something else.</p>
+      </div>
+    </div>
+
+    <div class="win dark canvas" style="border-radius:12px;padding:8px">
+      <div class="empty">
+        <svg class="ico"><use href="#i-pause"/></svg>
+        <h3>Clipboard monitoring is paused</h3>
+        <p>Resume monitoring to start saving copied items again.</p>
+        <button class="btn primary" style="margin-top:6px">Resume Monitoring</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:16px;margin-top:16px">
+    <div class="win dark canvas" style="border-radius:12px;padding:16px;display:grid;gap:14px;align-content:start">
+      <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;
+                  background:rgba(255,162,58,.12);border:1px solid rgba(255,162,58,.25)">
+        <svg class="ico" style="color:var(--warn);font-size:16px"><use href="#i-key"/></svg>
+        <div>
+          <div style="font-size:13px;font-weight:600">Sensitive content</div>
+          <div style="font-size:11px;color:var(--text-2);margin-top:3px;line-height:1.5">Detected as a possible API key — masked until you reveal it.</div>
+        </div>
+        <button class="btn" style="margin-left:auto">Reveal</button>
+      </div>
+
+      <div class="empty" style="padding:26px 12px">
+        <svg class="ico"><use href="#i-lock"/></svg>
+        <h3>Content hidden</h3>
+        <p>Reveal above to view, edit, or copy this content.</p>
+      </div>
+
+      <div style="display:flex;justify-content:center">
+        <span class="toast"><svg class="ico warn"><use href="#i-x"/></svg>Copied — Accessibility needed to paste</span>
+      </div>
+    </div>
+
+    <div style="display:grid;gap:16px;align-content:start">
+      <div class="win dark canvas" style="border-radius:12px;padding:16px">
+        <div class="eyebrow" style="margin-bottom:10px">Loading</div>
+        <div style="display:grid;gap:8px">
+          <div style="display:flex;gap:14px;padding:10px 12px;background:var(--card);border-radius:var(--r-row)">
+            <div class="skel" style="width:44px;height:44px;border-radius:12px"></div>
+            <div style="flex:1;display:grid;gap:8px;align-content:center">
+              <div class="skel" style="height:13px;width:62%"></div>
+              <div class="skel" style="height:10px;width:34%"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;padding:10px 12px;background:var(--card);border-radius:var(--r-row)">
+            <div class="skel" style="width:44px;height:44px;border-radius:12px"></div>
+            <div style="flex:1;display:grid;gap:8px;align-content:center">
+              <div class="skel" style="height:13px;width:78%"></div>
+              <div class="skel" style="height:10px;width:28%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="win dark canvas" style="border-radius:12px;padding:22px;display:grid;gap:10px;place-items:center;text-align:center">
+        <div class="eyebrow">Confirm</div>
+        <div style="font-size:15px;font-weight:600">Clear clipboard history?</div>
+        <div style="font-size:12px;color:var(--text-2);max-width:38ch;line-height:1.55">
+          This will permanently remove all saved clipboard items. This action cannot be undone.</div>
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button class="btn">Cancel</button>
+          <button class="btn danger">Clear All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== PORT NOTES ============================== -->
+<section id="port">
+  <h2 class="sect"><span class="n">6</span> How this would port back into SwiftUI</h2>
+  <p class="sect-sub">For later — no code has been written. This is the mapping, so the lift is mechanical rather
+  than a redesign-by-accident.</p>
+  <div class="card" style="padding:18px">
+    <dl class="meta-list" style="grid-template-columns:250px 1fr;font-size:12px">
+      <dt>new UI/Theme.swift</dt><dd>Airpisode's <code>Theme</code> mechanics — canvas, <code>cardBackground(cornerRadius:)</code>, chip, gradient — carrying <b>Kopie's own two stops</b>.</dd>
+      <dt>new UI/Motion.swift</dt><dd><code>smooth / quick / gentle</code> springs, <code>.appear()</code>, <code>.hoverLift()</code>.</dd>
+      <dt>UI/Components.swift</dt><dd><code>BreathingBackground</code> → <code>Theme.canvas</code>; <code>DS.pad</code> and <code>EmptyStateView</code> stay; empty state gains the gradient CTA.</dd>
+      <dt>UI/MainView.swift</dt><dd>Sidebar stays put and keeps its order; selection becomes a gradient pill; the count badges are new.</dd>
+      <dt>UI/HistoryRow.swift</dt><dd>Row becomes a card at radius 14; the 40×40 glyph becomes a 44×44 tile; hover actions unchanged.</dd>
+      <dt>UI/DetailsPanel.swift</dt><dd>MetaGrid card + gradient primary Copy button; the segmented control becomes filled chips.</dd>
+      <dt>UI/PopoverView.swift</dt><dd>Same 440 × 360 dimensions; row chrome swaps to the card style.</dd>
+      <dt>UI/LandingView + OnboardingView</dt><dd>Five steps unchanged; canvas behind, gradient buttons, app icon as shipped.</dd>
+      <dt>UI/Settings/*.swift</dt><dd>Six tabs unchanged; grouped cards, gradient toggles and active tab.</dd>
+      <dt>UI/Theme.swift — light / dark</dt><dd>Each token resolves per <code>colorScheme</code>: canvas, card fill, hairline, row hover, field and toast all have a paper value. No component asks which appearance is active.</dd>
+      <dt>AppIcon.swift, AppIconResolver</dt><dd><b>Not touched.</b> Only <code>GlobalActions</code>-level chrome is restyled.</dd>
+      <dt>Sensitive rows</dt><dd>Deliberately outside the tint system — orange stays orange, never gradient.</dd>
+    </dl>
+  </div>
+</section>
+
+<script>
+/* Palette preview only. Same four variables the CSS already reads, so every
+   gradient, glow, chip and selection on the page repaints at once. */
+(function(){
+  var btns = document.querySelectorAll('.pal');
+  var name = document.getElementById('palname');
+  function apply(el){
+    var r = document.documentElement.style;
+    r.setProperty('--accent', el.dataset.a);
+    r.setProperty('--accent-magenta', el.dataset.b);
+    r.setProperty('--accent-soft', el.dataset.ga);
+    r.setProperty('--magenta-soft', el.dataset.gb);
+    btns.forEach(function(b){ b.classList.toggle('on', b === el); });
+    name.textContent = el.querySelector('.nm').textContent;
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ apply(b); }); });
+})();
+
+/* Appearance. Two token sets, one board; the choice remembers itself. */
+(function(){
+  var root = document.documentElement;
+  var buttons = document.querySelectorAll('[data-set-theme]');
+  var meta = document.querySelector('meta[name="theme-color"]');
+  function paint(theme){
+    root.setAttribute('data-theme', theme);
+    buttons.forEach(function(b){ b.classList.toggle('on', b.dataset.setTheme === theme); });
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#F2EDE7' : '#08080b');
+  }
+  buttons.forEach(function(b){
+    b.addEventListener('click', function(){
+      paint(b.dataset.setTheme);
+      try { localStorage.setItem('kopie-prototype-theme', b.dataset.setTheme); } catch(e){}
+    });
+  });
+  paint(root.getAttribute('data-theme') || 'dark');
+})();
+</script>
+
+</body>
+</html>

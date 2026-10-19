@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let hosting = NSHostingController(rootView: SettingsView().environmentObject(state))
             let win = NSWindow(contentViewController: hosting)
             win.title = "Settings"
-            win.setContentSize(NSSize(width: 520, height: 420))
+            win.setContentSize(NSSize(width: 660, height: 520))
             win.styleMask = [.titled, .closable]
             win.isReleasedWhenClosed = false
             win.center()

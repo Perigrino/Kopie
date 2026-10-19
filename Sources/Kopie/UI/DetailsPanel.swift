@@ -8,6 +8,7 @@ struct DetailsPanel: View {
     /// lets the host surface its Copied toast.
     var onCopied: (() -> Void)? = nil
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
     @State private var showRichText = true
     /// Non-nil while the inline plain-text editor is open.
     @State private var draftText: String?
@@ -21,10 +22,20 @@ struct DetailsPanel: View {
             if item.isSensitive {
                 sensitiveBanner
             }
-            Text(item.typeLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
+            // Spec eyebrow: `Text · Rich` + a pause icon-btn at the right.
+            HStack(spacing: 8) {
+                Text(item.typeLabel + (item.isRichText ? "  ·  Rich" : ""))
+                    .font(.system(size: 10, weight: .bold))
+                    .kerning(1.4)
+                    .textCase(.uppercase)
+                    .foregroundStyle(Theme.textTertiary(for: scheme))
+                Spacer(minLength: 8)
+                EmberIconButton(systemName: state.isPaused ? "play.circle" : "pause.circle",
+                                scheme: scheme,
+                                action: { state.isPaused.toggle() },
+                                isOn: state.isPaused)
+                .help(state.isPaused ? "Resume monitoring" : "Pause monitoring")
+            }
             if item.isSensitive && !revealed {
                 maskedContentPlaceholder
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -44,7 +55,7 @@ struct DetailsPanel: View {
             metaGrid
             actions
         }
-        .padding(24)
+        .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: item.id) { _ in
             // Switching items discards any unsaved edit — and re-masks
@@ -132,27 +143,25 @@ struct DetailsPanel: View {
                 let isHTML = item.richTextRelPath?.hasSuffix(".html") ?? false
                 let isCode = codeLanguage != .plainText
 
-                // Always show the Plain/Formatted toggle for text items so you can
-                // switch between the two either way. The Edit button opens the
+                // Spec chips: Plain Text / Formatted pills (gradient when
+                // live), Edit as a ghost chip. The Edit button opens the
                 // inline plain-text editor.
-                HStack(spacing: 8) {
-                    Picker("", selection: $showRichText) {
-                        Text("Plain Text").tag(false)
-                        Text("Formatted").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                HStack(spacing: 6) {
+                    chipToggle("Plain Text", on: !showRichText) { showRichText = false }
+                    chipToggle("Formatted", on: showRichText) { showRichText = true }
 
                     if draftText != nil {
                         if savedRecently {
                             Label("Saved", systemImage: "checkmark.circle.fill")
-                                .font(.caption).foregroundStyle(.green)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Theme.ok(for: scheme))
                         }
-                        Button("Cancel") {
+                        Spacer(minLength: 0)
+                        EmberGhostButton(title: "Cancel") {
                             draftText = nil
                             jsonValidationMessage = nil
                         }
-                        Button("Save") {
+                        EmberPrimaryButton(title: "Save", verticalPadding: 5, horizontalPadding: 12) {
                             if let draft = draftText {
                                 state.updateText(item, to: draft)
                             }
@@ -164,23 +173,29 @@ struct DetailsPanel: View {
                             }
                         }
                         .disabled((draftText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
                     } else {
                         Button {
                             draftText = item.text ?? ""
                             jsonValidationMessage = nil
                         } label: {
-                            Label("Edit", systemImage: "pencil")
+                            HStack(spacing: 5) {
+                                Image(systemName: "pencil").font(.system(size: 11, weight: .medium))
+                                Text("Edit").font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundStyle(Theme.textSecondary(for: scheme))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Theme.chipColor(for: scheme)))
                         }
+                        .buttonStyle(.plain)
                         .keyboardShortcut("e", modifiers: .command)
                         .help("Edit this text (⌘E)")
                     }
+                }
 
-                    // JSON utilities: Pretty / Minify / Validate on code items.
-                    if codeLanguage == .json, let original = item.text {
-                        jsonMenu(originalText: original)
-                    }
+                // JSON utilities: Pretty / Minify / Validate on code items.
+                if codeLanguage == .json, let original = item.text {
+                    jsonMenu(originalText: original)
                 }
 
                 if draftText != nil {
@@ -203,13 +218,22 @@ struct DetailsPanel: View {
                                            message: "This copied item is plain text — it has no rich formatting like bold, italics, colours, or links. Switch to the Plain Text tab to see the raw text.")
                         }
                     } else {
-                        // Plain Text tab
+                        // Spec .content-box: 13/1.6 text on a softly
+                        // contrasting card with a 12pt radius, min-h 150.
                         ScrollView {
                             Text(item.text ?? "")
-                                .font(.body)
+                                .font(.system(size: 13))
+                                .lineSpacing(6)
+                                .foregroundStyle(Theme.textSecondary(for: scheme))
                                 .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+                                .padding(14)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Theme.contentBackground(for: scheme))
+                                }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .id(item.id) // rebuild when a different item is selected
@@ -250,7 +274,7 @@ struct DetailsPanel: View {
                     } else if let thumb = state.thumbnail(for: item) {
                         Image(nsImage: thumb).resizable()
                     } else {
-                        ProgressView()
+                        EmberSkeleton(cornerRadius: 12)
                             .frame(maxWidth: .infinity, minHeight: 160)
                     }
                 }
@@ -381,6 +405,21 @@ struct DetailsPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Spec `.chip` toggle — gradient fill when live.
+    private func chipToggle(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: on ? .semibold : .medium))
+                .foregroundStyle(on ? Color.white : Theme.textSecondary(for: scheme))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(on ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.chipColor(for: scheme))))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(Motion.quick, value: on)
+    }
+
     /// Pretty/Minify write back through `state.updateText` (re-hashes so
     /// re-copying the formatted text dedupes); Validate reports inline.
     private func jsonMenu(originalText: String) -> some View {
@@ -410,8 +449,19 @@ struct DetailsPanel: View {
                 }
             }
         } label: {
-            Label("JSON", systemImage: "curlybraces")
+            HStack(spacing: 5) {
+                Image(systemName: "curlybraces").font(.system(size: 11, weight: .medium))
+                Text("JSON").font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).padding(.leading, 1)
+            }
+            .foregroundStyle(Theme.textSecondary(for: scheme))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Theme.chipColor(for: scheme)))
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .fixedSize()
         .help("Pretty-print, minify, or validate this JSON")
     }
     /// Content stays masked until the user clicks — deliberate friction.
@@ -421,13 +471,14 @@ struct DetailsPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "key.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warn(for: scheme))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Sensitive content")
                         .font(.callout.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary(for: scheme))
                     Text("Detected as \(item.sensitiveKindLabel ?? "a possible secret") — masked until you reveal it.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.textSecondary(for: scheme))
                 }
                 Spacer()
                 Button(revealed ? "Hide" : "Reveal") { revealed.toggle() }
@@ -437,7 +488,7 @@ struct DetailsPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Theme.warn(for: scheme).opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
     }
 
     private var metaGrid: some View {
@@ -472,66 +523,75 @@ struct DetailsPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Theme.cardBackground(for: scheme), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
     }
 
     private func meta(_ label: String, _ value: String) -> some View {
         Group {
-            Text(label).foregroundStyle(.secondary)
-            Text(value).foregroundStyle(.primary)
+            Text(label).foregroundStyle(Theme.textTertiary(for: scheme))
+            Text(value).foregroundStyle(Theme.textSecondary(for: scheme)).monospacedDigit()
         }
-        .font(.caption)
+        .font(.system(size: 11))
     }
 
     private var actions: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button {
                 state.copyBack(item)
             } label: {
-                Image(systemName: "doc.on.doc")
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.on.doc").font(.system(size: 12, weight: .semibold))
+                    Text("Copy").font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Theme.gradient))
+                .shadow(color: Theme.accent.opacity(scheme == .dark ? 0.35 : 0.28), radius: 9, y: 3)
+                .contentShape(Capsule())
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
             .keyboardShortcut("c", modifiers: .command)
             .help("Copy to clipboard (⌘C)")
-            
-            Divider().frame(height: 20)
-            
-            Button {
-                state.toggleFavorite(item)
-            } label: {
-                Image(systemName: item.isFavorite ? "star.fill" : "star")
-                    .foregroundStyle(item.isFavorite ? .yellow : .primary)
-            }
-            .buttonStyle(.bordered)
+
+            Rectangle().fill(Theme.hairline(for: scheme)).frame(width: 1, height: 22)
+
+            EmberIconButton(systemName: item.isFavorite ? "star.fill" : "star",
+                            scheme: scheme,
+                            action: { state.toggleFavorite(item) },
+                            isOn: item.isFavorite,
+                            star: true)
             .help(item.isFavorite ? "Remove from favorites" : "Add to favorites")
-            
-            Button {
-                state.togglePin(item)
-            } label: {
-                Image(systemName: item.isPinned ? "pin.fill" : "pin")
-                    .foregroundStyle(item.isPinned ? .blue : .primary)
-            }
-            .buttonStyle(.bordered)
+
+            EmberIconButton(systemName: item.isPinned ? "pin.fill" : "pin",
+                            scheme: scheme,
+                            action: { state.togglePin(item) },
+                            isOn: item.isPinned)
             .help(item.isPinned ? "Unpin item" : "Pin to top")
-            
+
             Spacer()
-            
+
             if state.isQueuedForPaste(item) {
                 Button {
                     state.toggleQueued(item)
                 } label: {
-                    Label("Queued \(state.pasteQueueCount)", systemImage: "list.number")
+                    HStack(spacing: 5) {
+                        Image(systemName: "list.number").font(.system(size: 11, weight: .medium))
+                        Text("Queued \(state.pasteQueueCount)").font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.textSecondary(for: scheme))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Theme.chipColor(for: scheme)))
+                    .contentShape(Capsule())
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .help("Remove from paste queue")
             }
-            
-            Button(role: .destructive) {
-                state.remove(item)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.bordered)
+
+            EmberIconButton(systemName: "trash",
+                            scheme: scheme,
+                            action: { state.remove(item) })
             .help("Delete item")
         }
         .padding(.top, 4)

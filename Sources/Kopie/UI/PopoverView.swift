@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct PopoverView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
     @FocusState private var searchFocused: Bool
     @State private var selectionMode = false
     @State private var selectedIDs = Set<Int64>()
@@ -30,6 +31,12 @@ struct PopoverView: View {
     /// layout position — scroll offsets are already baked in). Rows report
     /// these through `RowFramePreference`.
     @State private var rowFrames: [Int64: CGRect] = [:]
+    /// Set just before the keyboard path moves the highlight, so the
+    /// `onChange(of: highlightedIndex)` scroll only fires for arrow keys.
+    /// Hover also moves the highlight (the spec's "what Enter will paste is
+    /// unmistakable"), but scrolling the list to center a merely-hovered row
+    /// yanks the whole list around — hover must not scroll.
+    @State private var scrollPending = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +48,9 @@ struct PopoverView: View {
             bottomBar
         }
         .frame(width: 440)
+        // `.win.dark.canvas` — the popover sits on the Ember canvas (the two
+        // fixed radial glows) exactly like the mock, not on a flat fill.
+        .background(Theme.canvas(for: scheme))
         .coordinateSpace(name: Self.rootSpace)
         .onChange(of: state.searchText) { _ in
             state.refresh()
@@ -88,43 +98,45 @@ struct PopoverView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 7) {
+        // `.popover-head` — flex gap 9, padding 16 per the spec mock.
+        HStack(spacing: 9) {
             Image(nsImage: AppIcon.image(pointSize: 18))
-            Text("Kopie").font(.headline)
+            Text("Kopie")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary(for: scheme))
             Spacer()
-            Button {
+            EmberIconButton(systemName: state.isPaused ? "play.circle" : "pause.circle",
+                            scheme: scheme) {
                 withAnimation { state.isPaused ? state.startMonitoring() : state.pauseMonitoring() }
-            } label: {
-                Image(systemName: state.isPaused ? "play.circle" : "pause.circle")
             }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
             .help(state.isPaused ? "Resume monitoring" : "Pause monitoring")
         }.padding(DS.pad)
     }
 
     private var searchBar: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(searchFocused ? Color.accentColor : Color.secondary)
-                .frame(width: 24)
-            
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(searchFocused ? Theme.accent : Theme.textTertiary(for: scheme))
+
             TextField("Search clipboard…", text: $state.searchText)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .onSubmit { state.refresh() }
                 .font(.system(size: 13))
-            
+                .foregroundStyle(Theme.textPrimary(for: scheme))
+
             if !state.searchText.isEmpty {
-                Button { 
+                Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         state.searchText = ""
                         state.refresh()
                     }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 20, height: 20)
+                        .foregroundStyle(Theme.textTertiary(for: scheme))
                 }
                 .buttonStyle(.plain)
                 .help("Clear search")
@@ -134,22 +146,26 @@ struct PopoverView: View {
         // Fixed-height field: SwiftUI vertically centers the plain TextField
         // inside it, which is what keeps the placeholder on the same baseline
         // as the magnifier icon (padding-based sizing let them drift apart).
-        .padding(.horizontal, 6)
-        .frame(height: 28)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(searchFocused ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.22),
-                                      lineWidth: searchFocused ? 1 : 0.5)
-                )
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(Theme.fieldBackground(for: scheme),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            // `.field:focus` — 1px accent ring; at rest the dark field has no
+            // edge and the light one keeps the inset hairline.
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(focusRingColor, lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.15), value: searchFocused)
         .animation(.easeInOut(duration: 0.15), value: state.searchText.isEmpty)
         .padding(.horizontal, DS.pad)
-        .padding(.top, 2)
-        .padding(.bottom, 10)
+        .padding(.top, 12)        .padding(.bottom, 10)
+    }
+
+    /// `.field:focus` ring — the accent itself; transparent at rest in dark mode.
+    private var focusRingColor: Color {
+        if searchFocused { return Theme.accent }
+        return scheme == .light ? Theme.hairline(for: scheme) : .clear
     }
 
     @ViewBuilder private var content: some View {
@@ -174,50 +190,31 @@ struct PopoverView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(groupByDay(state.items)) { group in
-                            Text(group.label)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 10).padding(.bottom, 4)
+                        let groups = groupByDay(state.items)
+                        let firstGroupID = groups.first?.id
+                        ForEach(groups) { group in
+                            // `.group-label` — 11/600 uppercase, wide tracking,
+                            // tertiary; popover inline overrides: 2px in, first
+                            // label 6px up, later ones 18px (the css default),
+                            // 8px down.
+                            Text(group.label.uppercased())
+                                .font(.system(size: Theme.tMeta, weight: .semibold))
+                                .tracking(0.9)
+                                .foregroundStyle(Theme.textTertiary(for: scheme))
+                                .padding(.leading, 2)
+                                .padding(.top, group.id == firstGroupID ? 6 : 18)
+                                .padding(.bottom, 8)
                             ForEach(Array(group.items.enumerated()), id: \.element.id) { _, item in
                                 // Flat index per item, built once per render.
                                 // Calling firstIndex inside the ForEach was O(n²)
                                 // on every paint (including the hover-driven ones).
                                 let idx = indexByID[item.id] ?? 0
-                                HistoryRow(item: item,
-                                           thumbnail: state.thumbnail(for: item),
-                                           selectionMode: selectionMode,
-                                           isSelected: selectedIDs.contains(item.id),
-                                           isHighlighted: highlightedIndex == idx,
-                                           onCopy: { copy(item) },
-                                           // Click-to-paste is hotkey-popover only; the
-                                           // menu-bar list falls back to plain copy.
-                                           onPaste: state.pasteOnClickEnabled ? { copyAndPaste(item) } : nil,
-                                           onRemove: { state.remove(item) },
-                                           onFavorite: { state.toggleFavorite(item) },
-                                           onPin: { state.togglePin(item) },
-                                           onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
-                                           onToggleQueue: { state.toggleQueued(item) },
-                                           isQueued: state.isQueuedForPaste(item),
-                                           onToggleSelect: { toggleSelect(item.id) },
-                                           onToggleExpire: { state.toggleExpireAfterUse(item) },
-                                           expiresAfterUse: state.isExpiredAfterUse(item),
-                                           onHoverChange: { hovering in
-                                               rowHover(item, hovering)
-                                           })
-                                    .id(item.id)
-                                    .modifier(RowGeometry(itemID: item.id))
-                                    // ⌥-click: same copy-and-paste path as a plain click
-                                    // (the popover only closes when the paste can actually
-                                    // happen). A plain tap is handled inside HistoryRow —
-                                    // there must be exactly one non-simultaneous tap
-                                    // recognizer on the row. The empty `.onTapGesture {}`
-                                    // that used to sit here was a leftover `.onDrag`
-                                    // workaround and competed with it, which is what made
-                                    // the first clicks do nothing.
-                                    .simultaneousGesture(TapGesture().modifiers(.option).onEnded { _ in
-                                        copyAndPaste(item)
-                                    })
+                                // `.row-interstitial` grid gap — 6px between
+                                // cards; nothing after the very last row, where
+                                // the list wrapper's 8px pad closes the column.
+                                popoverRow(item, idx)
+                                    .padding(.bottom,
+                                             item.id == state.items.last?.id ? 0 : 6)
                             }
                         }
                     }.padding(.horizontal, DS.pad).padding(.vertical, Self.listVerticalPadding)
@@ -232,13 +229,46 @@ struct PopoverView: View {
                     forwardPreviewAnchor()
                 }
                 .onChange(of: highlightedIndex) { _ in
-                    guard let i = highlightedIndex, state.items.indices.contains(i) else { return }
+                    // Arrow-key moves scroll; hover moves don't (scrollPending
+                    // is only set by `moveHighlight`).
+                    guard scrollPending, let i = highlightedIndex,
+                          state.items.indices.contains(i) else { return }
+                    scrollPending = false
                     withAnimation(.easeInOut(duration: 0.15)) {
                         proxy.scrollTo(state.items[i].id, anchor: .center)
                     }
                 }
             }
         }
+    }
+
+    /// One compact popover row, built in a function so the massive memberwise
+    /// initializer doesn't blow the type-checker's budget per ForEach element.
+    private func popoverRow(_ item: ClipboardItem, _ idx: Int) -> some View {
+        HistoryRow(
+            item: item,
+            thumbnail: state.thumbnail(for: item),
+            selectionMode: selectionMode,
+            isSelected: selectedIDs.contains(item.id),
+            isHighlighted: highlightedIndex == idx,
+            onCopy: { copy(item) },
+            onPaste: state.pasteOnClickEnabled ? { copyAndPaste(item) } : nil,
+            onRemove: { state.remove(item) },
+            onFavorite: { state.toggleFavorite(item) },
+            onPin: { state.togglePin(item) },
+            onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
+            onToggleQueue: { state.toggleQueued(item) },
+            isQueued: state.isQueuedForPaste(item),
+            onToggleSelect: { toggleSelect(item.id) },
+            onToggleExpire: { state.toggleExpireAfterUse(item) },
+            expiresAfterUse: state.isExpiredAfterUse(item),
+            onHoverChange: { hovering in rowHover(item, idx, hovering) },
+            compact: true
+        )
+        .id(item.id)
+        .modifier(RowGeometry(itemID: item.id))
+        .simultaneousGesture(
+            TapGesture().modifiers(.option).onEnded { _ in copyAndPaste(item) })
     }
 
     /// Show (or switch) the preview bubble for a row — hover or keyboard.
@@ -263,8 +293,14 @@ struct PopoverView: View {
         GlobalActions.movePreview?(item, rowFrames[id]?.midY)
     }
 
-    private func rowHover(_ item: ClipboardItem, _ hovering: Bool) {
+    private func rowHover(_ item: ClipboardItem, _ idx: Int, _ hovering: Bool) {
         if hovering {
+            // Hover moves the keyboard highlight too — the selection ring and
+            // gradient tile follow the pointer, so Enter acts on what's under
+            // it (the spec's "what Enter will paste is unmistakable" row).
+            if highlightedIndex != idx {
+                highlightedIndex = idx
+            }
             showPreview(item)
         } else if activePreviewID == item.id {
             GlobalActions.clearPreview?(0.5)
@@ -298,7 +334,7 @@ struct PopoverView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
+        HStack(spacing: 14) {
             if selectionMode {
                 Button("Cancel") {
                     selectionMode = false; selectedIDs = []
@@ -321,8 +357,13 @@ struct PopoverView: View {
                     .disabled(state.items.isEmpty)
             }
         }
-        .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-        .padding(10).padding(.horizontal, DS.pad)
+        // `.popover-foot` — ghost buttons: transparent, 6×4 padding, 11/600,
+        // tertiary; the bar itself is hairline-topped with 10/16/12 padding.
+        .buttonStyle(.plain)
+        .font(.system(size: Theme.tMeta, weight: .semibold))
+        .foregroundStyle(Theme.textTertiary(for: scheme))
+        .padding(.vertical, 6).padding(.horizontal, 4)
+        .padding(.top, 4).padding(.horizontal, DS.pad).padding(.bottom, 8)
     }
 
     private func copy(_ item: ClipboardItem) {
@@ -420,6 +461,9 @@ struct PopoverView: View {
         } else {
             next = delta > 0 ? 0 : count - 1
         }
+        // Keyboard-driven moves get the centering scroll; hover-driven ones
+        // must not (the flag is consumed by the onChange scroll handler).
+        scrollPending = true
         highlightedIndex = next
         showPreview(state.items[next])
     }

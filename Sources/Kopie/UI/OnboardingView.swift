@@ -16,6 +16,7 @@ struct OnboardingView: View {
     }
     @State private var retention = RetentionPeriod.daySeven
     @State private var splashTask: Task<Void, Never>?
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Group {
@@ -27,7 +28,8 @@ struct OnboardingView: View {
         }
         .frame(width: 520, height: 420)
         .background {
-            BreathingBackground(reduceMotion: reduceMotion, cycle: state.ambientSpeed.cycle)
+            // Spec canvas: near-black (or warm paper) with the two glows.
+            Theme.canvas(for: scheme)
             // Esc skips the splash (and only the splash — not an onboarding step).
             if state.isReturnLaunch {
                 Button("") { endSplash() }
@@ -83,10 +85,12 @@ struct OnboardingView: View {
             Group {
                 switch step {
                 case 0: LandingView()
-                case 1: stepView(1, symbol: "square.stack.3d.up",
+                case 1: stepView(1, gradientTile: true,
+                                 symbol: "square.stack.3d.up",
                                  title: "Everything you copy, organized",
                                  message: "Text, images, links, and files — everything you copy is saved and searchable. Paste anything back in one click or a keystroke.")
-                case 2: stepView(2, symbol: "hand.raised",
+                case 2: stepView(2, gradientTile: false,
+                                 symbol: "hand.raised",
                                  title: "Private by design",
                                  message: "Your history stays on your Mac — encrypted at rest, never uploaded. Copy a password or API key and Kopie masks it automatically; one-time codes vanish after you paste them.")
                 case 3: retentionStep
@@ -102,17 +106,21 @@ struct OnboardingView: View {
 
             Divider()
             HStack {
-                Button("Back") { withAnimation { step = max(0, step - 1) } }
-                    .disabled(step == 0)
+                EmberGhostButton(title: "Back", muted: step == 0) {
+                    withAnimation { step = max(0, step - 1) }
+                }
+                .disabled(step == 0) // spec: Back reads 45% on the first step
                 Spacer()
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(0..<5, id: \.self) { i in
-                        Circle().fill(i == step ? Color.accentColor : Color.secondary.opacity(0.3))
-                            .frame(width: 7, height: 7)
+                        Circle()
+                            .fill(i == step ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.chipColor(for: scheme)))
+                            .frame(width: i == step ? 9 : 7, height: i == step ? 9 : 7)
+                            .animation(Motion.quick, value: step)
                     }
                 }
                 Spacer()
-                Button(step == 4 ? "Get Started" : "Continue") {
+                EmberPrimaryButton(title: step == 4 ? "Start copying" : "Continue") {
                     withAnimation {
                         if step == 4 {
                             state.finishOnboarding(retention: retention)
@@ -120,43 +128,80 @@ struct OnboardingView: View {
                         } else { step += 1 }
                     }
                 }
-                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
     }
 
-    private func stepView(_ tag: Int, symbol: String, title: String, message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: symbol).font(.system(size: 52)).foregroundStyle(Color.accentColor)
-            Text(title).font(.title2.weight(.semibold))
-            Text(message).font(.body).foregroundStyle(.secondary)
+    // MARK: - Step bodies (spec: centered gap 12, icon tiles, 18/700 headline)
+
+    private func stepView(_ tag: Int, gradientTile: Bool, symbol: String, title: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            stepTile(gradient: gradientTile, symbol: symbol)
+            Text(title)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.textPrimary(for: scheme))
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary(for: scheme))
+                .lineSpacing(3)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
+                .frame(maxWidth: 340)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tag(tag)
     }
 
+    /// The spec's icon tile: 64×64 rounded square over the canvas — a
+    /// gradient-filled tile with a white glyph, or a plain chip with an
+    /// accent glyph.
+    private func stepTile(gradient: Bool, symbol: String, size: CGFloat = 64) -> some View {
+        RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous)
+            .fill(gradient ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.chipColor(for: scheme)))
+            .frame(width: size, height: size)
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: size * 0.36, weight: .medium))
+                    .foregroundStyle(gradient ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.accentInk(for: scheme)))
+            }
+            .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 10, y: 4)
+    }
+
     private var retentionStep: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "clock.arrow.circlepath").font(.system(size: 52)).foregroundStyle(Color.accentColor)
-            Text("How long should history stick around?").font(.title2.weight(.semibold))
+        let columns = Array(repeating: GridItem(.fixed(60), spacing: 5), count: 3)
+        return VStack(spacing: 12) {
+            stepTile(gradient: true, symbol: "clock.arrow.circlepath", size: 56)
+            Text("How long should history stick around?")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.textPrimary(for: scheme))
             Text("Items older than this are removed automatically — favorites and pins are always kept. You can change this anytime in Settings.")
-                .font(.body).foregroundStyle(.secondary)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary(for: scheme))
+                .lineSpacing(3)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340)
-            Picker("Retention", selection: $retention) {
-                ForEach(RetentionPeriod.allCases) { p in
-                    Text(p.label).tag(p)
+            // Spec: a 3-column chip grid; the live choice wears the gradient.
+            LazyVGrid(columns: columns, alignment: .center, spacing: 5) {
+                ForEach(RetentionPeriod.allCases, id: \.rawValue) { p in
+                    let on = retention == p
+                    Button {
+                        withAnimation(Motion.quick) { retention = p }
+                    } label: {
+                        Text(p.label)
+                            .font(.system(size: 11, weight: .medium).monospacedDigit())
+                            .foregroundStyle(on ? Color.white : Theme.textSecondary(for: scheme))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .frame(maxWidth: .infinity)
+                            .background(Capsule().fill(on ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.chipColor(for: scheme))))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden() // the heading above names the choice; without
-            // this, macOS renders the "Retention" label beside the control —
-            // squeezed into a one-character-wide column (vertical text).
-            .frame(maxWidth: 400)
+            .frame(maxWidth: 300)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -167,39 +212,48 @@ struct OnboardingView: View {
         HStack(spacing: 8) {
             keycap("⌘"); keycap("⇧"); keycap("V")
             Text("or click the Kopie icon in your menu bar")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary(for: scheme))
         }
     }
 
     private func keycap(_ label: String) -> some View {
         Text(label)
-            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .foregroundStyle(Theme.textPrimary(for: scheme))
             .frame(width: 30, height: 30)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Theme.chipColor(for: scheme))
                     .shadow(color: .black.opacity(0.18), radius: 0.5, y: 1.5)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Color.secondary.opacity(0.28), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Theme.hairline(for: scheme), lineWidth: 1)
             )
     }
 
     private var finalStep: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "sparkles").font(.system(size: 52)).foregroundStyle(Color.accentColor)
-            Text("You're ready").font(.title2.weight(.semibold))
+        VStack(spacing: 12) {
+            // Spec: the shipped app icon, exactly as shipped, no redraw.
+            Image(nsImage: AppIcon.image(pointSize: 76))
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 76, height: 76)
+                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.22), radius: 15, y: 6)
+            Text("You're ready")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.textPrimary(for: scheme))
             VStack(spacing: 10) {
                 Text("Copy anything — it lands here instantly.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary(for: scheme))
                 hotkeyRow
             }
             Text("Try it: copy this sentence, then press the keys above.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textTertiary(for: scheme))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.scale.combined(with: .opacity))
