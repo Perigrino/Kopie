@@ -143,9 +143,10 @@ struct HistoryRow: View {
 
     @ViewBuilder private var metadataLine: some View {
         HStack(spacing: 5) {
-            // Popover compact rows drop the source app per the spec mock
-            // ("Text · 5:10 pm · 74 chars"); main list rows keep it.
-            if !compact, let sourceApp = item.sourceApp {
+            // Every row shows where the item was copied from (icon + app
+            // name); the main list additionally tags sensitive items after
+            // the type label.
+            if let sourceApp = item.sourceApp {
                 Image(nsImage: AppIconResolver.icon(for: sourceApp, size: NSSize(width: 11, height: 11)))
                     .frame(width: 11, height: 11)
                     .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
@@ -154,13 +155,13 @@ struct HistoryRow: View {
                     .foregroundStyle(Theme.textSecondary(for: scheme))
                     .lineLimit(1)
             }
-            if !compact && item.sourceApp != nil {
+            if item.sourceApp != nil {
                 Text("·")
                     .font(.system(size: Theme.tMeta))
                     .foregroundStyle(Theme.textTertiary(for: scheme))
             }
-            // Sensitive rows lead with the warn-colored tag (compact) or keep
-            // the type label and tag them after it (main list, line 657).
+            // Sensitive rows lead with the warn-colored tag in the popover
+            // or tag them after the type label in the main list.
             if compact && item.isSensitive {
                 Text("Sensitive")
                     .font(.system(size: Theme.tMeta))
