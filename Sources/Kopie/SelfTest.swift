@@ -94,8 +94,13 @@ enum SelfTest {
         case "--smoke-render-main":
             // Renders MainView (sidebar + list + detail) offscreen for
             // README screenshots. Honors KOPIE_STORAGE_DIR for demo stores.
+            // Optional size arg: --smoke-render-main 1518x1102 [dark]
             MainActor.assumeIsolated {
-                renderMain(dark: args.contains("dark"))
+                let sizeArg = args.dropFirst().first { $0.contains("x") && $0.range(of: #"^\d+x\d+$"#, options: .regularExpression) != nil }
+                renderMain(dark: args.contains("dark"), size: sizeArg.flatMap { size -> NSSize? in
+                    let parts = size.split(separator: "x").compactMap { Int($0) }
+                    return parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : nil
+                })
             }
         case "--smoke-render-onboarding":
             // Renders the onboarding window offscreen. Args: [step(0-4)] ["dark"]
@@ -268,13 +273,13 @@ enum SelfTest {
 
     /// Renders the main window (sidebar, history list, detail panel).
     @MainActor
-    private static func renderMain(dark: Bool) {
+    private static func renderMain(dark: Bool, size: NSSize? = nil) {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let state = AppState()
         let host = NSHostingController(rootView: MainView().environmentObject(state))
         let win = NSWindow(contentViewController: host)
-        win.setContentSize(NSSize(width: 900, height: 560))
+        win.setContentSize(size ?? NSSize(width: 900, height: 560))
         win.styleMask = [.titled]
         win.title = "Kopie"
         if dark { win.appearance = NSAppearance(named: .darkAqua) }

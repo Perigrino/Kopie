@@ -341,12 +341,14 @@ struct MainView: View {
                         }
                     }
                 }
+                // Trailing inset on the CONTENT (inside the scroll view):
+                // the overlay scrollbar sits at the scroll view's own edge,
+                // so padding on the ScrollView itself just shrank the rows
+                // along with it and the two stayed glued together.
+                .padding(.trailing, 44)
             }
             .padding(.top, 8)
-            // Extra trailing clearance keeps the rows clear of the
-            // window's overlay vertical scrollbar.
             .padding(.leading, 18)
-            .padding(.trailing, 46)
             .padding(.bottom, 18)
 
             // Hidden ⌘F activator: focuses the search field like the badge hint.
@@ -445,8 +447,7 @@ struct MainView: View {
                 .foregroundStyle(Theme.textTertiary(for: scheme))
         }
         .padding(.leading, 6)
-        // Clear the same overlay scrollbar the rows clear.
-        .padding(.trailing, 34)
+        .padding(.trailing, 2)
         .padding(.top, 18)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
