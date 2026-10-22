@@ -153,8 +153,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let hosting = NSHostingController(rootView: MainView().environmentObject(state))
             let win = NSWindow(contentViewController: hosting)
             win.title = "Kopie"
-            win.setContentSize(NSSize(width: 900, height: 560))
-            win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            // Fixed geometry: the main window opens at the approved
+            // 1518 × 1102 frame and does not resize (clamped to a
+            // smaller display's visible frame).
+            let vf = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+            win.setContentSize(NSSize(width: min(1518, vf.width), height: min(1102, vf.height)))
+            win.styleMask = [.titled, .closable, .miniaturizable]
             win.isReleasedWhenClosed = false
             win.center()
             mainWindow = win

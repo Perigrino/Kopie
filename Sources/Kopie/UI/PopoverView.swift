@@ -217,7 +217,12 @@ struct PopoverView: View {
                                              item.id == state.items.last?.id ? 0 : 6)
                             }
                         }
-                    }.padding(.horizontal, DS.pad).padding(.vertical, Self.listVerticalPadding)
+                    }
+                    .padding(.leading, DS.pad)
+                    // Trailing clearance keeps rows clear of the list's
+                    // overlay vertical scrollbar.
+                    .padding(.trailing, DS.pad + 10)
+                    .padding(.vertical, Self.listVerticalPadding)
                 }
                 .frame(height: Self.listViewportHeight)
                 // Keep the externally owned bubble anchored while the list

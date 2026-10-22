@@ -341,7 +341,10 @@ struct MainView: View {
                 }
             }
             .padding(.top, 8)
-            .padding(.horizontal, 18)
+            // Extra trailing clearance keeps the rows clear of the
+            // window's overlay vertical scrollbar.
+            .padding(.leading, 18)
+            .padding(.trailing, 30)
             .padding(.bottom, 18)
 
             // Hidden ⌘F activator: focuses the search field like the badge hint.
