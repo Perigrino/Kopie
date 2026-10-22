@@ -279,7 +279,9 @@ struct MainView: View {
     // MARK: - List
 
     private var list: some View {
-        VStack(spacing: 0) {
+        // .leading matters: the default VStack alignment would center the
+        // page header (its own width) over the column.
+        VStack(alignment: .leading, spacing: 0) {
             // Spec `.page-header`: 26/700 tight tracking + 13px subtitle.
             VStack(alignment: .leading, spacing: 3) {
                 Text("History")
@@ -344,7 +346,7 @@ struct MainView: View {
             // Extra trailing clearance keeps the rows clear of the
             // window's overlay vertical scrollbar.
             .padding(.leading, 18)
-            .padding(.trailing, 30)
+            .padding(.trailing, 46)
             .padding(.bottom, 18)
 
             // Hidden ⌘F activator: focuses the search field like the badge hint.
@@ -443,7 +445,8 @@ struct MainView: View {
                 .foregroundStyle(Theme.textTertiary(for: scheme))
         }
         .padding(.leading, 6)
-        .padding(.trailing, 2)
+        // Clear the same overlay scrollbar the rows clear.
+        .padding(.trailing, 34)
         .padding(.top, 18)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
