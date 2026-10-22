@@ -149,11 +149,13 @@ enum SelfTest {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let state = AppState()
-        let host = NSHostingController(rootView: DetailsPanel(item: item).environmentObject(state))
+        let host = NSHostingController(rootView: AnyView(DetailsPanel(item: item)
+            .environmentObject(state)
+            .environment(\.colorScheme, dark ? .dark : .light)))
         let win = NSWindow(contentViewController: host)
         win.setContentSize(NSSize(width: 480, height: 400))
         win.styleMask = [.titled]
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(2))
         host.view.layoutSubtreeIfNeeded()
@@ -198,7 +200,7 @@ enum SelfTest {
         let win = NSWindow(contentViewController: NSHostingController(rootView: styled))
         win.setContentSize(NSSize(width: 340, height: 280))
         win.styleMask = [.titled]
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(2))
         let host = win.contentViewController as! NSHostingController<AnyView>
@@ -224,7 +226,7 @@ enum SelfTest {
         .frame(width: 320, height: 240)
         let win = NSWindow(contentViewController: NSHostingController(rootView: AnyView(content)))
         win.styleMask = [.titled]
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(1.2))
         let host = win.contentViewController as! NSHostingController<AnyView>
@@ -253,7 +255,8 @@ enum SelfTest {
         case "security": view = AnyView(SettingsView(initialSelection: .security))
         default: view = AnyView(SettingsView(initialSelection: .privacy))
         }
-        let host = NSHostingController(rootView: view.environmentObject(state))
+        let host = NSHostingController(rootView: AnyView(view
+            .environmentObject(state)))
         let win = NSWindow(contentViewController: host)
         win.setContentSize(NSSize(width: 660, height: 520))
         win.styleMask = [.titled]
@@ -277,12 +280,17 @@ enum SelfTest {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let state = AppState()
-        let host = NSHostingController(rootView: MainView().environmentObject(state))
+        // Force the color environment (like renderConfirm): the harness NSWindow's
+        // system appearance must not override the requested scheme.
+        let styled = AnyView(MainView()
+            .environmentObject(state)
+            .environment(\.colorScheme, dark ? .dark : .light))
+        let host = NSHostingController(rootView: styled)
         let win = NSWindow(contentViewController: host)
         win.setContentSize(size ?? NSSize(width: 900, height: 560))
         win.styleMask = [.titled]
         win.title = "Kopie"
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
         host.view.layoutSubtreeIfNeeded()
@@ -313,11 +321,13 @@ enum SelfTest {
             state.isReturnLaunch = false
             view = OnboardingView(initialStep: Int(arg) ?? 0)
         }
-        let host = NSHostingController(rootView: view.environmentObject(state))
+        let host = NSHostingController(rootView: AnyView(view
+            .environmentObject(state)
+            .environment(\.colorScheme, dark ? .dark : .light)))
         let win = NSWindow(contentViewController: host)
         win.setContentSize(NSSize(width: 520, height: 420))
         win.styleMask = [.titled]
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(1.2))
         host.view.layoutSubtreeIfNeeded()
@@ -356,11 +366,13 @@ enum SelfTest {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let state = AppState()
-        let host = NSHostingController(rootView: PopoverView().environmentObject(state))
+        let host = NSHostingController(rootView: AnyView(PopoverView()
+            .environmentObject(state)
+            .environment(\.colorScheme, dark ? .dark : .light)))
         let win = NSWindow(contentViewController: host)
         win.setContentSize(NSSize(width: 440, height: 420))
         win.styleMask = [.titled]
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
         host.view.layoutSubtreeIfNeeded()
@@ -386,11 +398,12 @@ enum SelfTest {
             tailOffset: 0,
             onHoverChange: { _ in })
             .environmentObject(state)
-        let host = NSHostingController(rootView: view)
+        let host = NSHostingController(rootView: AnyView(view
+            .environment(\.colorScheme, dark ? .dark : .light)))
         let win = NSWindow(contentViewController: host)
         win.setContentSize(NSSize(width: 400, height: 400))
         win.styleMask = [.titled]
-        if dark { win.appearance = NSAppearance(named: .darkAqua) }
+        win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
         // Rich items parse off the main thread now — give the background
