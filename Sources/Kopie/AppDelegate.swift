@@ -443,16 +443,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         PasteDirectService.requestPermission()
     }
 
-    /// Simulates ⌘V, or tells the user why it can't when Accessibility is
-    /// missing. The popover is already gone at this point, so failing silently
-    /// reads as "my click did nothing" — hence the notification. The system
-    /// dialog itself is raised once per launch, never once per click.
+    /// Runs the direct-paste op against the app that was frontmost before the
+    /// popover opened: plan → post → watch → at most one retry → toast on
+    /// fallback. Replaces the old "Paste Blocked" notification path (S-003).
     private func firePaste() {
-        if PasteDirectService.paste(delayMs: 0) { return }
-        requestAccessibilityOnce()
-        KopieNotifications.show(
-            title: "Paste Blocked",
-            message: "Grant Kopie Accessibility access in System Settings → Privacy & Security, then reopen Kopie. Your clipboard still has the item — press ⌘V to paste it.")
+        firePasteStage(attemptsMade: 0)
+    }
+
+    /// One stage of the paste pipeline. `attemptsMade` counts synthetic ⌘V
+    /// posts already sent for this op; the plan allows exactly one retry
+    /// (S-002) and every fallback ends in a toast, never silence (S-003).
+    private func firePasteStage(attemptsMade: Int) {
+        let targetName = prePopoverApp?.localizedName
+        let outcome = PasteDirectService.attempt(delayMs: 0,
+                                                 attemptsMade: attemptsMade,
+                                                 postToPID: prePopoverApp?.processIdentifier)
+        if case .fallback(let obstacle) = outcome {
+            ToastCenter.shared.showPaste(obstacle: obstacle, targetName: targetName)
+            if obstacle == .axMissing { requestAccessibilityOnce() }
+            return
+        }
+        // 150ms after posting, check the signals the plan can't see by itself:
+        // the target lost frontmost (tap went to the wrong queue), Secure Input
+        // turned on, or the AX grant was pulled mid-flight.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let stillFront = self.pasteTargetIsFrontmost(self.prePopoverApp)
+                if let obstacle = PasteObstacle.detect(axGranted: PasteDirectService.isPermissionGranted,
+                                                       secureInputActive: PasteDirectService.isSecureInputActive,
+                                                       targetStillFront: stillFront) {
+                    if attemptsMade == 0 {
+                        self.restoreFrontmostApp()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+                            MainActor.assumeIsolated { self?.firePasteStage(attemptsMade: 1) }
+                        }
+                    } else {
+                        ToastCenter.shared.showPaste(obstacle: obstacle, targetName: self.prePopoverApp?.localizedName)
+                    }
+                }
+                // Clean post (no obstacle): nothing further to do.
+            }
+        }
+    }
+
+    /// True while the expected paste target still owns the frontmost seat.
+    private func pasteTargetIsFrontmost(_ target: NSRunningApplication?) -> Bool {
+        guard let target else { return true }   // nothing to hold Kopie back
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
     }
 
     func popoverShouldClose(_ p: NSPopover) -> Bool { true }
