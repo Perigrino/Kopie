@@ -31,6 +31,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let appearance = "appearance"
         public static let hasSeenOnboarding = "hasSeenOnboarding"
         public static let hotkey = "hotkey"
+        public static let pasteBindings = "pasteBindings"
         public static let ambientSpeed = "ambientSpeed"
         public static let trackSourceApp = "trackSourceApp"
         public static let ocrImages = "ocrImages"
@@ -301,6 +302,23 @@ public final class SettingsStore: @unchecked Sendable {
         set {
             if let data = try? JSONEncoder().encode(newValue) {
                 defaults.set(data, forKey: Keys.hotkey)
+            }
+        }
+    }
+
+    /// All three paste-related bindings as one persisted value; falls back to
+    /// defaults the same way `hotkey` does.
+    public var pasteBindings: PasteBindings {
+        get {
+            if let data = defaults.data(forKey: Keys.pasteBindings),
+               let spec = try? JSONDecoder().decode(PasteBindings.self, from: data) {
+                return spec
+            }
+            return .default
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: Keys.pasteBindings)
             }
         }
     }
