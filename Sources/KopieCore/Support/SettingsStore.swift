@@ -152,7 +152,7 @@ public final class SettingsStore: @unchecked Sendable {
                 defaults.removeObject(forKey: key)
             }
         }
-        for key in [Keys.excludedApps, Keys.hotkey] {
+        for key in [Keys.excludedApps, Keys.hotkey, Keys.pasteBindings] {
             if let value = defaults.object(forKey: key), value as? Data == nil {
                 defaults.removeObject(forKey: key)
             }

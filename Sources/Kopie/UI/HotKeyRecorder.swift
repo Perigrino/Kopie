@@ -18,6 +18,14 @@ extension HotKeySpec {
 
 /// Button that, when clicked, records the next keydown and stores it as the global hotkey.
 struct HotKeyRecorder: View {
+    /// Non-nil: commit hook used by the Settings paste-binding rows (S-004).
+    /// The closure validates conflicts and persists the spec; it returns nil
+    /// to accept, or the inline error text shown under the button.
+    var commit: ((HotKeySpec) -> String?)? = nil
+    /// Label shown when not recording (nil = the legacy global hotkey row,
+    /// which reads `SettingsStore.shared.hotkey` itself).
+    var displayLabel: String? = nil
+
     @State private var recording = false
     @State private var errorMessage: String?
     @State private var monitor: GatedEventMonitor?
@@ -40,7 +48,7 @@ struct HotKeyRecorder: View {
                         handle: { handleWhileRecording($0) })
                 }
             } label: {
-                Text(recording ? "Press a key… (Esc to cancel)" : (SettingsStore.shared.hotkey.label))
+                Text(recording ? "Press a key… (Esc to cancel)" : (displayLabel ?? SettingsStore.shared.hotkey.label))
                     .font(.body.monospacedDigit())
                     .frame(minWidth: 140)
             }
@@ -84,6 +92,18 @@ struct HotKeyRecorder: View {
         let spec = HotKeySpec(keyCode: UInt32(event.keyCode), modifiers: carbonModifiers(event.modifierFlags))
         if let problem = Self.problem(with: spec) {
             errorMessage = problem
+            return
+        }
+        if let commit {
+            // Paste-binding row (S-004): validation and persistence live in the
+            // section; the recorder only surfaces the outcome inline. Keystrokes
+            // here never register a system hotkey.
+            if let problem = commit(spec) {
+                errorMessage = problem
+            } else {
+                errorMessage = nil
+                stopRecording()
+            }
             return
         }
         // Trial-register so combos macOS (or another app) already owns fail loudly
