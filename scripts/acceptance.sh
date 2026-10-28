@@ -73,4 +73,28 @@ case "$out" in
   *) fail "no stray windows at launch ($out)" ;;
 esac
 
+# 8. PastePlan decision smoke (S-001/S-002/S-003): app-target check of the exact
+#    decision machine the paste matrix below exercises.
+if with_timeout 30 $K --smoke-paste-plan | grep -q "^PASS"; then
+    pass "PastePlan decisions (S-001/S-002/S-003)"
+else
+    fail "PastePlan decisions (S-001/S-002/S-003)"
+fi
+
+# 9. [manual] paste matrix (S-002/S-003) — a human runs these on real targets
+#    before a release; this script stays headless. Every row must end *pasted*
+#    or with the floating fallback toast within the time budget (never silent):
+#      - TextEdit                 — plain ⌥↩ paste should succeed on the first post
+#      - Electron app (VS Code)   — may swallow the session tap; retry posts to the
+#                                   target pid, then pastes or toasts
+#      - terminal emulator        — may refuse synthetic keys; one retry, then the
+#                                   "Unable to paste into {App}…" toast
+#      - Parallels/VM (Java app)  — may refuse outright; toast fallback, no crash
+#      - Secure Input             — enable Terminal ▸ Secure Keyboard Entry, then
+#                                   paste: the password-field toast must appear and
+#                                   no keystroke may leak into the secure field
+#      - fallback toast actions   — "Open Settings…" jumps to Privacy & Security →
+#                                   Accessibility; "Dismiss" and Escape close the toast
+#      - quick-select ⌥1-9        — pastes the Nth history row directly
+#      - plain paste              — hold ⌃ (Paste as plain modifier) to insert plain text
 echo "ALL CHECKS PASSED"

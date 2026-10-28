@@ -133,6 +133,11 @@ enum SelfTest {
                 renderConfirm(kind: args.count > 1 && args[1] != "dark" ? args[1] : "danger",
                               dark: args.contains("dark"))
             }
+        case "--smoke-paste-plan":
+            // App-target smoke of the KopieCore.PastePlan decision machine
+            // (S-001/S-002/S-003): the decision table plus the live Secure
+            // Input probe. Backs the [manual] paste matrix in acceptance.sh.
+            MainActor.assumeIsolated { checkPastePlan() }
         case "--smoke-render-loading":
             // Renders the spec's "Loading" skeleton demo offscreen.
             MainActor.assumeIsolated {
@@ -238,6 +243,25 @@ enum SelfTest {
             print("WROTE \(out) \(png.count)B")
         }
         Self.writeWindowCapture(win, name: "kopie-loading\(dark ? "-dark" : "")")
+    }
+
+    /// Paste-plan smoke (S-001/S-002/S-003): three decision paths of the
+    /// `KopieCore.PastePlan` machine plus the app-target Secure Input probe.
+    /// `CGEventSource.secureInputEnabled` is not exported by this SDK's
+    /// CoreGraphics stub, so instead of comparing the probe against that symbol
+    /// the check asserts the true content: `PasteDirectService.isSecureInputActive`
+    /// is a plain Bool and `PasteObstacle.detect`'s final-signal ordering maps it
+    /// to `.secureInput` exactly when it is true.
+    @MainActor
+    private static func checkPastePlan() {
+        let ok1 = PastePlan.decide(PasteInput(axGranted: true, secureInputActive: true, attemptsMade: 0)) == .fallback(.secureInput)
+        let ok2 = PastePlan.decide(PasteInput(axGranted: true, secureInputActive: false, attemptsMade: 2)) == .fallback(.targetRefused)
+        let probe = PasteDirectService.isSecureInputActive
+        let probeExpected: PasteObstacle? = probe ? .secureInput : nil
+        let ok3 = PasteObstacle.detect(axGranted: true, secureInputActive: probe, targetStillFront: true) == probeExpected
+        let ok = ok1 && ok2 && ok3
+        print(ok ? "PASS PastePlan decisions (S-001/S-002/S-003)"
+                 : "FAIL PastePlan decisions (S-001/S-002/S-003) s1=\(ok1) s2=\(ok2) probe=\(ok3)")
     }
 
     /// Renders one Settings tab for visual verification.
