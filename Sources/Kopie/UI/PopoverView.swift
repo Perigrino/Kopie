@@ -417,9 +417,7 @@ struct PopoverView: View {
         guard SettingsStore.shared.pasteDirect else { return }
         guard PasteDirectService.isPermissionGranted else {
             GlobalActions.requestPastePermission?()
-            presentToast("Copied — Accessibility needed to paste", warning: true, seconds: 6,
-                         actionTitle: "Open Settings",
-                         action: { PasteDirectService.openAccessibilitySettings() })
+            ToastCenter.shared.showPaste(obstacle: .axMissing, targetName: nil)
             return
         }
         closeAndPaste()
