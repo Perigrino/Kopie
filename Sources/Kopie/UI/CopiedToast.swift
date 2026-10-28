@@ -15,6 +15,10 @@ struct CopiedToast: View {
     /// to go instead of only what is wrong.
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
+    /// Optional trailing `Dismiss` button (S-003 words) — used for the floating
+    /// failure toasts so a stuck warning can always be cleared by hand.
+    var dismissTitle: String? = nil
+    var onDismiss: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var scheme
 
@@ -39,6 +43,15 @@ struct CopiedToast: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.accentInk(for: scheme))
+            }
+            if let dismissTitle, let onDismiss {
+                Rectangle()
+                    .fill(Theme.hairline(for: scheme))
+                    .frame(width: 1, height: 14)
+                Button(dismissTitle, action: onDismiss)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary(for: scheme))
             }
         }
         .padding(.horizontal, 14)
