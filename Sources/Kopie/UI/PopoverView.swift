@@ -20,8 +20,9 @@ struct PopoverView: View {
     @State private var toastTask: Task<Void, Never>?
     /// Flat index into `state.items` for keyboard navigation (nil = nothing highlighted).
     @State private var highlightedIndex: Int?
-    /// True while Control is held: the next copy stages plain text only,
-    /// stripping rich text (paste-as-plain-text one-shot override).
+    /// True while the Paste-as-plain modifier (hold-to-override, default ⌃)
+    /// is down: the next copy stages plain text only, stripping rich text
+    /// (paste-as-plain-text one-shot override). Rebindable in S-004.
     @State private var controlHeld = false
     @State private var flagsMonitor: GatedEventMonitor?
     /// Item whose preview bubble we last requested — lets row-frame updates
@@ -273,7 +274,7 @@ struct PopoverView: View {
         .id(item.id)
         .modifier(RowGeometry(itemID: item.id))
         .simultaneousGesture(
-            TapGesture().modifiers(.option).onEnded { _ in copyAndPaste(item) })
+            TapGesture().modifiers(directPasteClickModifiers).onEnded { _ in copyAndPaste(item) })
     }
 
     /// Show (or switch) the preview bubble for a row — hover or keyboard.
@@ -369,6 +370,27 @@ struct PopoverView: View {
         .foregroundStyle(Theme.textTertiary(for: scheme))
         .padding(.vertical, 6).padding(.horizontal, 4)
         .padding(.top, 4).padding(.horizontal, DS.pad).padding(.bottom, 8)
+    }
+
+    // MARK: - Binding-driven paste modifiers (S-004)
+
+    /// The modifier required for ⌥-clicking a row to direct-paste, taken from
+    /// the saved Direct paste binding — a rebound key owns the row gesture
+    /// immediately, with no relaunch.
+    private var directPasteClickModifiers: EventModifiers {
+        SettingsStore.shared.pasteBindings.directPaste.eventModifiers
+    }
+
+    /// Same binding as `directPasteClickModifiers`, as NSEvent flags for the
+    /// keyDown side (⌥1…⌥9-style quick select rides the direct-paste modifier).
+    private var directPasteEventFlags: NSEvent.ModifierFlags {
+        SettingsStore.shared.pasteBindings.directPaste.nsEventFlags
+    }
+
+    /// The held modifier that forces a copy to stage plain text
+    /// ("Paste as plain" binding, default ⌃ Control).
+    private var plainPasteHeld: NSEvent.ModifierFlags {
+        HotKeySpec(keyCode: 0, modifiers: SettingsStore.shared.pasteBindings.plainModifier).nsEventFlags
     }
 
     private func copy(_ item: ClipboardItem) {
@@ -519,8 +541,10 @@ struct PopoverView: View {
         // 51 (delete/backspace) deliberately unhandled: backspace may only
         // edit the search field text — it must never remove a record from
         // the copied items list.
-        case 18, 19, 20, 21, 23, 22, 26, 28, 25:   // ⌥1…⌥9 quick-select
-            if event.modifierFlags.contains(.option) {
+        // {D}1…{D}9-style quick-select: the direct-paste modifier + a digit
+        // copies the nth item and direct-pastes it (rebindable with S-004).
+        case 18, 19, 20, 21, 23, 22, 26, 28, 25:
+            if event.modifierFlags.contains(directPasteEventFlags) {
                 let digits = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
                 if let n = digits[Int(event.keyCode)] {
                     quickSelect(n)
@@ -537,11 +561,12 @@ struct PopoverView: View {
         keyMonitor = nil
     }
 
-    /// Tracks the Control key so a copy can be forced to plain text
-    /// (hold ⌃ while clicking/pressing return — paste-as-plain-text).
+    /// Tracks the Paste-as-plain modifier (default ⌃) so a copy can be forced
+    /// to plain text (hold it while clicking/pressing return —
+    /// paste-as-plain-text).
     private func installFlagsMonitor() {
         // Same gate as the key monitor: modifier changes in other windows
-        // must not mutate the popover's ⌃-state. Never consumes.
+        // must not mutate the popover's paste-as-plain state. Never consumes.
         flagsMonitor = GatedEventMonitor(
             for: .flagsChanged,
             accepts: { GlobalActions.isPopoverKeyEvent($0) },
@@ -549,7 +574,11 @@ struct PopoverView: View {
     }
 
     private func syncControlFlag(_ event: NSEvent) {
-        controlHeld = event.modifierFlags.contains(.control)
+        // Subset check rather than equality: a re-bound combo (e.g. ⇧⌃)
+        // must be fully held, while extraneous flags (⌘) don't cancel it.
+        // Empty binding never sticks "on".
+        let held = plainPasteHeld
+        controlHeld = held.isEmpty ? false : event.modifierFlags.intersection(held) == held
     }
 
     private func removeFlagsMonitor() {

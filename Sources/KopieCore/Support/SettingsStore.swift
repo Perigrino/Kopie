@@ -110,6 +110,12 @@ public final class SettingsStore: @unchecked Sendable {
 
     private let defaults: UserDefaults
 
+    /// Read-only exposure of the underlying defaults instance, for observers
+    /// keyed to this store (e.g. the hotkey re-registration listener on
+    /// `UserDefaults.didChangeNotification`). Naming an accessor `defaults`
+    /// would collide with the stored property above.
+    public var userDefaults: UserDefaults { defaults }
+
     public init(userDefaults: UserDefaults = .standard) {
         self.defaults = userDefaults
         healInvalidTypes()

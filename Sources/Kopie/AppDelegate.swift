@@ -111,7 +111,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .store(in: &cancellables)
         applyVisibility()
 
-        registerHotKey()
+        registerGlobalHotkey()
+        // Bindings saved in Settings take effect in the running app immediately.
+        observeBindingChanges()
         // Resolve source-app icons before the popover is ever opened. The first
         // render used to pay for NSWorkspace lookups and offscreen image draws
         // row by row — on the critical path of the very click that revealed
@@ -125,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             MainActor.assumeIsolated { self?.applyAppearance() }
         }
         NotificationCenter.default.addObserver(forName: .kopieHotKeyChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.registerHotKey() }
+            MainActor.assumeIsolated { self?.registerGlobalHotkey() }
         }
         installSmokeProbe()
 
@@ -535,8 +537,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Hotkey
 
-    private func registerHotKey() {
-        let spec = SettingsStore.shared.hotkey
+    /// The global-hotkey spec currently registered with the HotKeyManager;
+    /// the did-change observer compares against this so unrelated defaults
+    /// writes (any Settings row) never cause a spurious unregister/register.
+    private var lastRegisteredHotKey: HotKeySpec?
+
+    private func registerGlobalHotkey() {
+        let spec = SettingsStore.shared.pasteBindings.globalHotkey
+        lastRegisteredHotKey = spec
         let ok = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
             MainActor.assumeIsolated { self?.showFromHotKey() }
         }
@@ -546,6 +554,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NSLog("Kopie hotkey registered (keyCode=%d, modifiers=%#x)", spec.keyCode, spec.modifiers)
         } else {
             NSLog("Kopie hotkey REGISTRATION FAILED (keyCode=%d, modifiers=%#x) — combo likely owned by another app", spec.keyCode, spec.modifiers)
+        }
+    }
+
+    /// Re-register the global hotkey right away when the user saves bindings —
+    /// the old path only applied at relaunch, so "Set Shortcut" looked broken.
+    /// Only a change to the global-hotkey spec itself triggers re-registration;
+    /// `HotKeyManager.register` unregisters the previous ref first.
+    private func observeBindingChanges() {
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: SettingsStore.shared.userDefaults,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let spec = SettingsStore.shared.pasteBindings.globalHotkey
+                guard spec != self.lastRegisteredHotKey else { return }
+                self.registerGlobalHotkey()
+            }
         }
     }
 }
