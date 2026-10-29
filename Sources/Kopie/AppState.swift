@@ -7,6 +7,11 @@ final class AppState: ObservableObject {
     @Published var items: [ClipboardItem] = []
     @Published var searchText: String = ""
     @Published var isPaused: Bool = false
+    /// Live missed-copies badge count from the capture monitor (S-012).
+    /// Rendered as a small capsule over the popover list; cleared when the
+    /// popover closes. Reconcile-on-open repairs the data; the badge itself
+    /// survives that open (so a flash can never hide a miss).
+    @Published var missedCopies: Int = 0
     /// Snapshot backing the main window's list. Views read this instead of
     /// querying the store during body evaluation (a query per render made
     /// selection clicks lag and let background captures reorder the list
@@ -151,6 +156,11 @@ final class AppState: ObservableObject {
             return self.captureActivity.mayRead()
         })
         self.monitor = monitor
+        // Anomaly sink fires on the monitor's tick thread — hop to main so the
+        // published badge state is only ever mutated on the main actor (S-012).
+        monitor.onAnomaly = { [weak self] n in
+            DispatchQueue.main.async { self?.missedCopies = n }
+        }
         self.isPaused = settings.monitorPaused
         self.excludedApps = settings.excludedApps
         self.ambientSpeed = settings.ambientSpeed
@@ -302,6 +312,16 @@ final class AppState: ObservableObject {
     func touchCaptureActivity() {
         captureActivity.touch()
     }
+    /// Reconcile-on-open (S-012): force a read of whatever the board holds
+    /// now (the newest copy survives), clear the monitor's internal miss
+    /// counter, and let the badge stay until the popover closes.
+    func reconcileCaptureMisses() {
+        monitor.reconcile()
+    }
+
+    /// Clears the on-screen badge (popover onDisappear).
+    func dismissMissedBadge() { missedCopies = 0 }
+
     func pauseMonitoring() {
         let wasRunning = !isPaused
         monitor.stop(); isPaused = true; settings.monitorPaused = true

@@ -59,6 +59,7 @@ struct PopoverView: View {
         }
         .onAppear {
             state.touchCaptureActivity()
+            state.reconcileCaptureMisses()
             // No refresh() here: AppDelegate refreshes before it shows the
             // popover, and every capture refreshes via .kopieStoreChanged.
             // Refreshing again on appear doubled the queries on every open
@@ -80,6 +81,7 @@ struct PopoverView: View {
             // "main view dead, menu-bar list moves instead" bug.
             removeKeyMonitor(); removeFlagsMonitor()
             activePreviewID = nil
+            state.dismissMissedBadge()
             GlobalActions.clearPreview?(0)
         }
         .overlay(alignment: .bottom) {
@@ -183,6 +185,10 @@ struct PopoverView: View {
                 Button("Resume Monitoring") { state.startMonitoring() }.padding(.bottom, 12)
             }
         } else {
+            if state.missedCopies > 0 {
+                MissedCopiesBadge(count: state.missedCopies, scheme: scheme)
+                    .padding(.bottom, 6)
+            }
             // Flat index per item, built once per render. `firstIndex` inside
             // the ForEach was O(n²) on every paint (including the hover-driven
             // ones). Uniquing rather than trapping so a bad row can never take
@@ -594,5 +600,38 @@ struct PopoverView: View {
         } else {
             GlobalActions.closePopover?()
         }
+    }
+}
+
+/// S-012: renders when the monitor accounted un-landed changes. Word on the
+/// row states what happened and what reconcile did; never blames the user.
+struct MissedCopiesBadge: View {
+    let count: Int
+    let scheme: ColorScheme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.warn(for: scheme))
+            Text(count == 1 ? "1 copy arrived too fast and may have been missed"
+                            : "\(count) copies arrived too fast and may have been missed")
+                .font(.system(size: Theme.tMeta, weight: .medium))
+                .foregroundStyle(Theme.textSecondary(for: scheme))
+            Spacer(minLength: 8)
+            Text("Latest copy saved")
+                .font(.system(size: Theme.tMeta, weight: .semibold))
+                .foregroundStyle(Theme.textTertiary(for: scheme))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Theme.warn(for: scheme).opacity(0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(Theme.hairline(for: scheme).opacity(0.6), lineWidth: 1)
+                )
+        )
     }
 }
