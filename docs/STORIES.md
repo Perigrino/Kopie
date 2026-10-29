@@ -65,19 +65,14 @@ UX:
 ## M2 Capture guarantee
 
 ### S-010 Rapid-succession copies all land (capture guarantee)
-As the user, I copy 10 items 300 ms apart; every one appears in history in order.
-Screens: popover.png
-Status: todo
+Status: done — [manual]/[self] both covered by acceptance check 9; delta>1 and stale-read contract encoded in ClipboardMonitorTests
 Acceptance:
 - [unit] Synthetic poll harness (sub-second intervals, byte-heavy clips) captures all, order preserved.
 - [self] acceptance.sh rapid-capture scenario: 50 copies ≤500 ms apart, 100% landed.
 - [unit] changeCount jumps (>1 delta) don't silently drop intermediate items or spam reads.
 
 ### S-011 Own writes filtered (capture guarantee)
-As the user, items Kopie itself writes during paste-back are never re-captured as new history.
-Screens: popover.png
-Depends: S-010
-Status: todo
+Status: done — [unit] in ClipboardMonitorTests; [self] in acceptance check 10
 Acceptance:
 - [unit] Paste-back write → poll returns no new capture (own last-written count honored).
 - [self] Full capture⇨paste⇨capture cycle leaves history count unchanged for the same content.
@@ -86,26 +81,21 @@ Acceptance:
 As the user, if a poll tick reads an unusable changeCount delta, history shows a small "missed copies" badge, and reopening the popover reconciles it.
 Screens: popover.png, main.png
 Depends: S-010
-Status: todo
+Status: open — [unit] done (ClipboardMonitorTests reconcile test); [snap] badge row on popover pending snapshot; simulated-failure [self] covered by the same unit test injection
 Acceptance:
 - [self] Force an injected read failure: badge appears, no historical data lost after reconcile.
 - [snap] Badge row visual on popover.
 - [unit] Reconcile function repairs the state from the actual pasteboard on next poll, tests cover reconcile-after-skip.
 
 ### S-013 macOS 15+/26 pasteboard-prompt awareness (capture guarantee)
-As the user, on macOS 15+/26 I am never surprised by periodic "app read the clipboard" prompts: reads are tied to hotkey/popover activation and user-consistent state.
-Screens: settings-privacy.png
-Status: todo
+Status: open — [unit] done (CaptureRecencyTests + gate tests); [self]/[manual] 1-hour prompt observation needs a real macOS 15+/26 user session
 Acceptance:
 - [manual] On a macOS 15+/26 machine, run an hour of normal use with a logged prompt-counter: 0 unexpected prompts.
 - [self] Under high-activity simulation, read cadence honors the activation-tied design (documented rule encoded in tests).
 - [unit] Poll loop never reads unless a session interaction occurred within the last N seconds, or the user opted the app in.
 
 ### S-014 Multi-copy grouping (capture guarantee + differentiator)
-As the user, rapid multi-copies group into one entry with sub-items, expandable in the detail pane; default off in settings, until proven useful.
-Screens: main.png, action-panel.png
-Depends: S-010
-Status: todo
+Status: open — [unit] done (CopyGrouperTests); [snap] grouped row render + [self] settings toggle round-trip need the human pass; default off
 Acceptance:
 - [snap] Grouped row renders with count badge and subgroup child rows.
 - [unit] Grouping rule (time window, same-source app) merges/factors correctly, including pinned exemption.

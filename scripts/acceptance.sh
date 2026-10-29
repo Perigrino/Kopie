@@ -81,7 +81,24 @@ else
     fail "PastePlan decisions (S-001/S-002/S-003)"
 fi
 
-# 9. [manual] paste matrix (S-002/S-003) — a human runs these on real targets
+# 9. [self] Rapid capture harness (S-010): 50 copies ≤500 ms apart must all land.
+#    Pumps the run loop between writes so the monitor's 150ms timer ticks 2-3×
+#    per write; don't speed it up (intentionally ~25s, not faster).
+if with_timeout 60 $K --smoke-rapid-capture | grep -q "^PASS"; then
+    pass "Rapid capture (S-010)"
+else
+    fail "Rapid capture (S-010)"
+fi
+
+# 10. [self] Own-write filter (S-011): full capture⇨paste-back⇄capture leaves
+#     history unchanged for the same content.
+if with_timeout 30 $K --smoke-own-write | grep -q "^PASS"; then
+    pass "Own-write filter (S-011)"
+else
+    fail "Own-write filter (S-011)"
+fi
+
+# 11. [manual] paste matrix (S-002/S-003) — a human runs these on real targets
 #    before a release; this script stays headless. Every row must end *pasted*
 #    or with the floating fallback toast within the time budget (never silent):
 #      - TextEdit                 — plain ⌥↩ paste should succeed on the first post
@@ -97,4 +114,13 @@ fi
 #                                   Accessibility; "Dismiss" and Escape close the toast
 #      - quick-select ⌥1-9        — pastes the Nth history row directly
 #      - plain paste              — hold ⌃ (Paste as plain modifier) to insert plain text
+# Plus M2 [manual] rows (automated bits covered above; these stay open for human pass):
+#       - Missed-copies badge (S-012): not feasible to force headless — unit test
+#         contract covers it. Visually exercise via a release build.
+#       - Pasteboard-prompt awareness (S-013): run ~1h of normal use on macOS 15+/26
+#         with a prompt counter → expect 0 unexpected prompts; with captureOnlyWhileInteracting=true,
+#         idle copies beyond the 90s window are NOT captured (deliberate, not a miss).
+#       - Burst grouping (S-014): copy 3 items within 2s in TextEdit → one row
+#         with a "3" badge; click through to main window → "Copies in this burst"
+#         with 2 children; toggle off in settings → rows separate again, no loss.
 echo "ALL CHECKS PASSED"

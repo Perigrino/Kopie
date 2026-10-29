@@ -138,6 +138,13 @@ enum SelfTest {
             // (S-001/S-002/S-003): the decision table plus the live Secure
             // Input probe. Backs the [manual] paste matrix in acceptance.sh.
             MainActor.assumeIsolated { checkPastePlan() }
+        case "--smoke-rapid-capture":
+            // S-010 [self]: 50 copies ≤500 ms apart all land, in order. Pumping
+            // the run loop lets the monitor's 150 ms timer tick 2-3× per write.
+            MainActor.assumeIsolated { smokeRapidCapture() }
+        case "--smoke-own-write":
+            // S-011 [self]: capture⇨paste-back⇄capture leaves history unchanged.
+            MainActor.assumeIsolated { smokeOwnWriteCycle() }
         case "--smoke-render-loading":
             // Renders the spec's "Loading" skeleton demo offscreen.
             MainActor.assumeIsolated {
@@ -448,5 +455,70 @@ enum SelfTest {
             print("WROTE \(out) \(png.count)B")
         }
         Self.writeWindowCapture(win, name: "kopie-render-bubble\(dark ? "-dark" : "")")
+    }
+
+    /// S-010 [self]: 50 copies ≤500 ms apart with cadence 150 ms must all land
+    /// in order (deltas of 1 are expected; >1 would surface the badge).
+    ///
+    /// Each write is `clearContents()` + `setString(...)`: `setString` alone
+    /// does NOT replace the pasteboard's contents (the old string survives and
+    /// `changeCount` stays put), so a type-only write would look like "no
+    /// change" to the monitor and land nothing. Clear-then-set is also what a
+    /// real copy operation does, and it advances `changeCount` by exactly 1.
+    @MainActor
+    private static func smokeRapidCapture() {
+        let state = AppState()
+        // AppState.init() already starts monitoring when not paused (the
+        // default), so the monitor's 150 ms timer is live before the first
+        // write — starting it after the writes would silently capture nothing.
+        let board = NSPasteboard.general
+        var targets: [String] = []
+        for i in 0..<50 {
+            targets.append("rapid-capture-\(i)")
+            board.clearContents()
+            board.setString(targets[i], forType: .string)
+            // Pump the run loop so the monitor's 150 ms timer ticks 2-3× per write.
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.35))
+        }
+        // Let the last capture drain.
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(1.0))
+        // Monitor already running from AppState.init — no startMonitoring() needed.
+        var f = QueryFilter()
+        f.limit = 100
+        let got = Array(state.store.query(f).prefix(50).reversed().compactMap(\.text))
+        // Diags go LAST so they are guaranteed flushed before the PASS/FAIL result.
+        print("diag first=\(Array(state.items.prefix(12)).map(\.text)) count=\(got.count)")
+        print(got == targets
+              ? "PASS Rapid capture (S-010) \(got.count)/50"
+              : "FAIL Rapid capture (S-010) landed=\(got)")
+    }
+
+    /// S-011 [self]: full capture⇨paste-back⇄capture leaves history count
+    /// unchanged for the same content (one row for the marker through all three phases).
+    @MainActor
+    private static func smokeOwnWriteCycle() {
+        let A = "own-write-cycle-\(UUID().uuidString)"
+        let state = AppState()
+        // Phase 1: one capture of the marker → exactly one row.
+        let board = NSPasteboard.general
+        board.clearContents(); board.setString(A, forType: .string)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        let afterFirst = state.items.filter { $0.text == A }.count
+        // Phase 2: paste-back via the app's public copyBack (which routes through
+        // the wired RestoreService → onDidWrite → monitor.noteSelfWrite).
+        // A fresh RestoreService() would not be wired to anything and would
+        // silently re-capture its own staging.
+        if let item = state.items.first(where: { $0.text == A }) {
+            state.copyBack(item)
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        let afterRestore = state.items.filter { $0.text == A }.count
+        // Phase 3: same content written again → copyTextToClipboard calls noteSelfWrite.
+        state.copyTextToClipboard(A)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        let afterReCapture = state.items.filter { $0.text == A }.count
+        let ok = afterFirst == 1 && afterRestore == 1 && afterReCapture == 1
+        print("afterFirst=\(afterFirst) afterRestore=\(afterRestore) afterReCapture=\(afterReCapture)")
+        print(ok ? "PASS Own-write filter (S-011)" : "FAIL Own-write filter (S-011)")
     }
 }
