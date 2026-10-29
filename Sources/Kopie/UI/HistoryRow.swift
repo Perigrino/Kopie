@@ -22,6 +22,8 @@ struct HistoryRow: View {
     var onPin: () -> Void = {}
     /// Copies the item staging only the plain-text flavor (strips RTF/HTML).
     var onCopyPlainText: (() -> Void)? = nil
+    /// Copies the OCR text from an image item (S-022).
+    var onCopyText: (() -> Void)? = nil
     /// Adds/removes the item from the sequential paste queue.
     var onToggleQueue: (() -> Void)? = nil
     var isQueued: Bool = false
@@ -143,6 +145,7 @@ struct HistoryRow: View {
                 onFavorite: onFavorite,
                 onPin: onPin,
                 onCopyPlainText: onCopyPlainText,
+                onCopyText: onCopyText,
                 onToggleQueue: onToggleQueue,
                 isQueued: isQueued,
                 onToggleExpire: onToggleExpire,

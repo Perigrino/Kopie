@@ -597,6 +597,13 @@ struct DetailsPanel: View {
             .keyboardShortcut("c", modifiers: .command)
             .help("Copy to clipboard (⌘C)")
 
+            if item.kind == .image && !item.isSensitive && !(item.ocrText?.isEmpty ?? true) {
+                EmberGhostButton(title: "Copy Text") {
+                    state.copyTextToClipboard(item.ocrText!)
+                    onCopied?()
+                }
+            }
+
             Rectangle().fill(Theme.hairline(for: scheme)).frame(width: 1, height: 22)
 
             EmberIconButton(systemName: item.isFavorite ? "star.fill" : "star",

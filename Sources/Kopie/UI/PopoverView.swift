@@ -286,6 +286,7 @@ struct PopoverView: View {
             onFavorite: { state.toggleFavorite(item) },
             onPin: { state.togglePin(item) },
             onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
+            onCopyText: (item.kind == .image && !item.isSensitive && !(item.ocrText?.isEmpty ?? true)) ? { copyOCRText(item) } : nil,
             onToggleQueue: { state.toggleQueued(item) },
             isQueued: state.isQueuedForPaste(item),
             onToggleSelect: { toggleSelect(item.id) },
@@ -432,6 +433,12 @@ struct PopoverView: View {
     private func copyPlainText(_ item: ClipboardItem) {
         state.copyBack(item, plainTextOnly: true)
         presentToast()
+    }
+
+    /// Context-menu action: copies OCR text from an image item (S-022).
+    private func copyOCRText(_ item: ClipboardItem) {
+        state.copyTextToClipboard(item.ocrText ?? "")
+        presentToast("Copied OCR text")
     }
 
     /// Shows the confirmation capsule. Warnings get longer on screen — the

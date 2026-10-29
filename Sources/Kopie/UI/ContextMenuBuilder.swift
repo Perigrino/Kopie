@@ -10,6 +10,8 @@ struct ContextMenuBuilder: View {
     var onPin: () -> Void
     /// Copies the item staging only the plain-text flavor (strips RTF/HTML).
     var onCopyPlainText: (() -> Void)? = nil
+    /// Copies the OCR text from an image item (S-022).
+    var onCopyText: (() -> Void)? = nil
     /// Adds/removes the item from the sequential paste queue.
     var onToggleQueue: (() -> Void)? = nil
     var isQueued: Bool = false
@@ -27,6 +29,12 @@ struct ContextMenuBuilder: View {
         if let onCopyPlainText, item.kind == .text, item.isRichText {
             Button(action: onCopyPlainText) {
                 Label("Copy as Plain Text", systemImage: "text.format")
+            }
+        }
+
+        if let onCopyText, item.kind == .image, let ocrText = item.ocrText, !ocrText.isEmpty {
+            Button(action: onCopyText) {
+                Label("Copy Text", systemImage: "doc.text")
             }
         }
 

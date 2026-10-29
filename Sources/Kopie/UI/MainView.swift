@@ -328,6 +328,7 @@ struct MainView: View {
                                                    onFavorite: { state.toggleFavorite(item) },
                                                    onPin: { state.togglePin(item) },
                                                    onCopyPlainText: item.isRichText ? { copyPlainText(item) } : nil,
+                                                   onCopyText: (item.kind == .image && !item.isSensitive && !(item.ocrText?.isEmpty ?? true)) ? { copyOCRText(item) } : nil,
                                                    onToggleQueue: { state.toggleQueued(item) },
                                                    isQueued: state.isQueuedForPaste(item),
                                                    onToggleExpire: { state.toggleExpireAfterUse(item) },
@@ -520,5 +521,12 @@ struct MainView: View {
     /// Context-menu action: stages the item without its rich-text flavors.
     private func copyPlainText(_ item: ClipboardItem) {
         state.copyBack(item, plainTextOnly: true)
+        showToast()
+    }
+    
+    /// Context-menu action: copies OCR text from an image item (S-022).
+    private func copyOCRText(_ item: ClipboardItem) {
+        state.copyTextToClipboard(item.ocrText ?? "")
+        showToast()
     }
 }
