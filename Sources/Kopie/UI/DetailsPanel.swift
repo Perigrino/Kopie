@@ -4,6 +4,12 @@ import AppKit
 
 struct DetailsPanel: View {
     let item: ClipboardItem
+    /// S-014: children of the selected burst (everyone but the leader) when
+    /// grouping is on and the row is a burst leader; nil keeps all existing
+    /// call sites compiling unchanged. (`var` + inline default so the
+    /// synthesized memberwise init keeps accepting the historical
+    /// `DetailsPanel(item:onCopied:)` shape.)
+    var burstMembers: [ClipboardItem]? = nil
     /// Called after any acknowledgment-worthy action (color copy buttons);
     /// lets the host surface its Copied toast.
     var onCopied: (() -> Void)? = nil
@@ -35,6 +41,39 @@ struct DetailsPanel: View {
                                 action: { state.isPaused.toggle() },
                                 isOn: state.isPaused)
                 .help(state.isPaused ? "Resume monitoring" : "Pause monitoring")
+            }
+            if let burstMembers, !burstMembers.isEmpty {
+                Divider().padding(.horizontal, DS.pad)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Copies in this burst")
+                        .font(.system(size: Theme.tMeta, weight: .semibold))
+                        .tracking(0.9)
+                        .foregroundStyle(Theme.textTertiary(for: scheme))
+                    ForEach(burstMembers) { child in
+                        HStack(spacing: 8) {
+                            Text(child.createdAt.formatted(date: .omitted, time: .standard))
+                                .font(.system(size: Theme.tMeta))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.textSecondary(for: scheme))
+                            Text(child.isSensitive
+                                 ? String(repeating: "•", count: 12)
+                                 : (child.text ?? "No text"))
+                                .font(.system(size: 13))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(Theme.textPrimary(for: scheme))
+                            Spacer(minLength: 8)
+                            Button("Copy") {
+                                state.copyTextToClipboard(child.text ?? "")
+                                onCopied?()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help("Copy this burst member again")
+                        }
+                    }
+                }
+                .padding(.horizontal, DS.pad)
             }
             if item.isSensitive && !revealed {
                 maskedContentPlaceholder

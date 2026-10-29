@@ -8,6 +8,7 @@ struct SettingsClipboardTab: View {
     @AppStorage(SettingsStore.Keys.saveFiles) private var saveFiles = true
     @AppStorage(SettingsStore.Keys.ignoreDuplicates) private var ignoreDuplicates = true
     @AppStorage(SettingsStore.Keys.ocrImages) private var ocrImages = true
+    @AppStorage(SettingsStore.Keys.groupedCaptures) private var groupedCaptures = false
     @AppStorage(SettingsStore.Keys.maxItems) private var maxItems = 1000
 
     var body: some View {
@@ -28,6 +29,8 @@ struct SettingsClipboardTab: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Toggle("Recognize text in images (searchable)", isOn: $ocrImages)
+                Toggle("Group rapid copies", isOn: $groupedCaptures)
+                    .help("Copies made within 2 seconds merge into one burst entry (S-014)")
             Text("Runs entirely on your Mac. Screenshots become findable by the words inside them.")
                 .font(.caption).foregroundStyle(.secondary)
             } header: {

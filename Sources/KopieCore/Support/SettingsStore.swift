@@ -44,6 +44,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let sensitiveDisabledRules = "sensitiveDisabledRules"
         public static let autoExpireOneTimeSecrets = "autoExpireOneTimeSecrets"
         public static let captureOnlyWhileInteracting = "captureOnlyWhileInteracting"
+        public static let groupedCaptures = "groupedCaptures"
         public static let screenShieldMode = "screenShieldMode"
     }
 
@@ -149,7 +150,7 @@ public final class SettingsStore: @unchecked Sendable {
                         Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
                         Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText,
                         Keys.showMenuBarPreview, Keys.autoExpireOneTimeSecrets,
-                        Keys.captureOnlyWhileInteracting]
+                        Keys.captureOnlyWhileInteracting, Keys.groupedCaptures]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -434,6 +435,13 @@ public final class SettingsStore: @unchecked Sendable {
             return mode
         }
         set { defaults.set(newValue.rawValue, forKey: Keys.screenShieldMode) }
+    }
+
+    /// S-014: collapse rapid multi-copies into one burst row in the lists.
+    /// Default off until proven useful.
+    public var groupedCaptures: Bool {
+        get { defaults.object(forKey: Keys.groupedCaptures) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Keys.groupedCaptures) }
     }
 
     /// S-013: when true, background capture reads happen only inside the

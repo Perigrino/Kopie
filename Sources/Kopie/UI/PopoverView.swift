@@ -18,7 +18,8 @@ struct PopoverView: View {
     @State private var toastActionTitle: String?
     @State private var toastAction: (() -> Void)?
     @State private var toastTask: Task<Void, Never>?
-    /// Flat index into `state.items` for keyboard navigation (nil = nothing highlighted).
+    /// Flat index into the displayed entries (burst-aware) for keyboard
+    /// navigation (nil = nothing highlighted).
     @State private var highlightedIndex: Int?
     /// True while the Paste-as-plain modifier (hold-to-override, default ⌃)
     /// is down: the next copy stages plain text only, stripping rich text
@@ -189,22 +190,26 @@ struct PopoverView: View {
                 MissedCopiesBadge(count: state.missedCopies, scheme: scheme)
                     .padding(.bottom, 6)
             }
-            // Flat index per item, built once per render. `firstIndex` inside
-            // the ForEach was O(n²) on every paint (including the hover-driven
-            // ones). Uniquing rather than trapping so a bad row can never take
-            // the popover down with it.
-            let indexByID = Dictionary(state.items.enumerated().map { ($1.id, $0) },
+            // Display groups (day buckets) and entries (flat across all day
+            // groups) + flat index map. `firstIndex` in the ForEach was O(n²)
+            // on every paint (including the hover-driven ones). Uniquing
+            // rather than trapping so a bad row can never take the popover
+            // down with it.
+            let groups = groupByDay(state.items)
+            let allEntries = groups.flatMap { entriesForDay($0, burstGrouping: SettingsStore.shared.groupedCaptures) }
+            let flatIDs = allEntries.map(\.id)
+            let indexByID = Dictionary(allEntries.enumerated().map { ($1.id, $0) },
                                        uniquingKeysWith: { first, _ in first })
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        let groups = groupByDay(state.items)
                         let firstGroupID = groups.first?.id
                         ForEach(groups) { group in
                             // `.group-label` — 11/600 uppercase, wide tracking,
                             // tertiary; popover inline overrides: 2px in, first
                             // label 6px up, later ones 18px (the css default),
                             // 8px down.
+                            let entries = entriesForDay(group, burstGrouping: SettingsStore.shared.groupedCaptures)
                             Text(group.label.uppercased())
                                 .font(.system(size: Theme.tMeta, weight: .semibold))
                                 .tracking(0.9)
@@ -212,17 +217,16 @@ struct PopoverView: View {
                                 .padding(.leading, 2)
                                 .padding(.top, group.id == firstGroupID ? 6 : 18)
                                 .padding(.bottom, 8)
-                            ForEach(Array(group.items.enumerated()), id: \.element.id) { _, item in
-                                // Flat index per item, built once per render.
-                                // Calling firstIndex inside the ForEach was O(n²)
-                                // on every paint (including the hover-driven ones).
-                                let idx = indexByID[item.id] ?? 0
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { _, entry in
+                                // Flat index per entry, built once per render.
+                                let idx = indexByID[entry.id] ?? 0
                                 // `.row-interstitial` grid gap — 6px between
                                 // cards; nothing after the very last row, where
                                 // the list wrapper's 8px pad closes the column.
-                                popoverRow(item, idx)
+                                popoverEntry(entry: entry, idx: idx,
+                                             isLastInPopover: entry.id == allEntries.last?.id)
                                     .padding(.bottom,
-                                             item.id == state.items.last?.id ? 0 : 6)
+                                             entry.id == allEntries.last?.id ? 0 : 6)
                             }
                         }
                     }
@@ -245,25 +249,37 @@ struct PopoverView: View {
                     // Arrow-key moves scroll; hover moves don't (scrollPending
                     // is only set by `moveHighlight`).
                     guard scrollPending, let i = highlightedIndex,
-                          state.items.indices.contains(i) else { return }
+                          flatIDs.indices.contains(i) else { return }
                     scrollPending = false
                     withAnimation(.easeInOut(duration: 0.15)) {
-                        proxy.scrollTo(state.items[i].id, anchor: .center)
+                        proxy.scrollTo(flatIDs[i], anchor: .center)
                     }
                 }
             }
         }
     }
 
+    /// Renders one display entry: a lone clip row or a burst leader row
+    /// with a trailing count badge (S-014). Reuses the existing popover row.
+    private func popoverEntry(entry: GroupedEntry, idx: Int, isLastInPopover: Bool) -> some View {
+        switch entry {
+        case .single(let item):
+            popoverRow(item, idx)
+        case .group(let g):
+            popoverRow(entry.payload, idx, burstCount: g.members.count)
+        }
+    }
+
     /// One compact popover row, built in a function so the massive memberwise
     /// initializer doesn't blow the type-checker's budget per ForEach element.
-    private func popoverRow(_ item: ClipboardItem, _ idx: Int) -> some View {
+    private func popoverRow(_ item: ClipboardItem, _ idx: Int, burstCount: Int? = nil) -> some View {
         HistoryRow(
             item: item,
             thumbnail: state.thumbnail(for: item),
             selectionMode: selectionMode,
             isSelected: selectedIDs.contains(item.id),
             isHighlighted: highlightedIndex == idx,
+            burstCount: burstCount,
             onCopy: { copy(item) },
             onPaste: state.pasteOnClickEnabled ? { copyAndPaste(item) } : nil,
             onRemove: { state.remove(item) },
@@ -400,6 +416,13 @@ struct PopoverView: View {
         HotKeySpec(keyCode: 0, modifiers: SettingsStore.shared.pasteBindings.plainModifier).nsEventFlags
     }
 
+    /// Flat display entries mirroring the body's rendering, so keyboard
+    /// navigation and quick-select resolve the same rows a burst renders as
+    /// (its leader payload). Built on demand for the action paths.
+    private var displayEntries: [GroupedEntry] {
+        groupByDay(state.items).flatMap { entriesForDay($0, burstGrouping: SettingsStore.shared.groupedCaptures) }
+    }
+
     private func copy(_ item: ClipboardItem) {
         state.copyBack(item, plainTextOnly: controlHeld)
         presentToast()
@@ -457,19 +480,20 @@ struct PopoverView: View {
     /// app underneath, not in Kopie.
     private func copyAndPasteHighlighted() {
         let item: ClipboardItem?
-        if let i = highlightedIndex, state.items.indices.contains(i) {
-            item = state.items[i]
+        if let i = highlightedIndex, displayEntries.indices.contains(i) {
+            item = displayEntries[i].payload
         } else {
-            item = state.items.first
+            item = displayEntries.first?.payload
         }
         guard let item else { return }
         copyAndPaste(item)
     }
 
-    /// ⌥1…⌥9 quick-select: copy the nth item, then direct-paste it.
+    /// ⌥1…⌥9 quick-select: copy the nth item, then direct-paste it. A burst
+    /// entry responds with its leader item.
     private func quickSelect(_ n: Int) {
-        guard state.items.indices.contains(n - 1) else { return }
-        copyAndPaste(state.items[n - 1])
+        guard displayEntries.indices.contains(n - 1) else { return }
+        copyAndPaste(displayEntries[n - 1].payload)
     }
 
     /// Closes the popover and asks AppDelegate to paste once the app the
@@ -485,7 +509,8 @@ struct PopoverView: View {
 
     private func moveHighlight(_ delta: Int) {
         guard !selectionMode else { return }
-        let count = state.items.count
+        let entries = displayEntries
+        let count = entries.count
         guard count > 0 else { return }
         let next: Int
         if let i = highlightedIndex {
@@ -497,7 +522,7 @@ struct PopoverView: View {
         // must not (the flag is consumed by the onChange scroll handler).
         scrollPending = true
         highlightedIndex = next
-        showPreview(state.items[next])
+        showPreview(entries[next].payload)
     }
 
     private func toggleSelect(_ id: Int64) {

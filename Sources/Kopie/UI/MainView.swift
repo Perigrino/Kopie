@@ -314,12 +314,15 @@ struct MainView: View {
                             .padding(.top, 48)
                     } else {
                         ForEach(groupByDay(filtered)) { group in
+                            let entries = entriesForDay(group, burstGrouping: SettingsStore.shared.groupedCaptures)
                             Section {
                                 LazyVStack(alignment: .leading, spacing: 8) {
-                                    ForEach(group.items) { item in
+                                    ForEach(entries) { entry in
+                                        let item = entry.payload
                                         HistoryRow(item: item,
                                                    thumbnail: state.thumbnail(for: item),
                                                    isSelected: item.id == selectedID,
+                                                   burstCount: entry.burstCount,
                                                    onCopy: { copy(item) },
                                                    onRemove: { state.remove(item) },
                                                    onFavorite: { state.toggleFavorite(item) },
@@ -330,9 +333,9 @@ struct MainView: View {
                                                    onToggleExpire: { state.toggleExpireAfterUse(item) },
                                                    expiresAfterUse: state.isExpiredAfterUse(item),
                                                    copyOnTap: false)
-                                            .tag(item.id)
+                                            .tag(entry.id)
                                             .onTapGesture { selectedID = item.id }
-                                            .id(item.id)
+                                            .id(entry.id)
                                     }
                                 }
                             } header: {
@@ -470,10 +473,28 @@ struct MainView: View {
 
     // MARK: - Detail
 
+    /// The flat display entries (S-014) of the main list, mirroring how the
+    /// list renders: with grouping on, burst leaders collapse to one row.
+    private var displayEntries: [GroupedEntry] {
+        groupByDay(filtered).flatMap { entriesForDay($0, burstGrouping: SettingsStore.shared.groupedCaptures) }
+    }
+
+    /// Children of the selected burst (everyone but the leader) when the
+    /// selected clip is a burst leader and grouping is on (S-014); nil
+    /// otherwise, so the detail pane stays unchanged for lone clips.
+    /// (Plan's inline `allEntries` closure is PopoverView-scoped; in
+    /// MainView this lives in its own computed property instead.)
+    private var burstMembers: [ClipboardItem]? {
+        guard SettingsStore.shared.groupedCaptures, let selectedID,
+              case .group(let group)? = displayEntries.first(where: { $0.id == selectedID })
+        else { return nil }
+        return Array(group.members.dropFirst())
+    }
+
     private var detail: some View {
         Group {
             if let item = filtered.first(where: { $0.id == selectedID }) {
-                DetailsPanel(item: item, onCopied: { showToast() })
+                DetailsPanel(item: item, burstMembers: burstMembers, onCopied: { showToast() })
             } else {
                 EmptyStateView(symbol: "square.stack", title: "Select an item", message: "Choose an item from your history to see its details.")
             }

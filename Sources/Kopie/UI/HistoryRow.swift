@@ -8,6 +8,9 @@ struct HistoryRow: View {
     var selectionMode: Bool = false
     var isSelected: Bool = false
     var isHighlighted: Bool = false
+    /// When non-nil, the row is a burst (rapid multi-copy) leader showing
+    /// this total count (S-014).
+    var burstCount: Int? = nil
     @Environment(\.colorScheme) private var scheme
     var onCopy: () -> Void
     /// What a tap on the row itself does. Nil falls back to `onCopy`, so a
@@ -83,6 +86,19 @@ struct HistoryRow: View {
                 metadataLine
             }
             Spacer(minLength: 4)
+            if let burstCount, burstCount > 1 {
+                // S-014 burst badge — accent capsule with a white count, the
+                // same accent-fill/white-glyph pair the app's other accent
+                // fills use (no dedicated onAccent token exists).
+                Text("\(burstCount)")
+                    .font(.system(size: Theme.tMeta, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.accent))
+                    .help("Copied \(burstCount) times in a row")
+            }
             if !selectionMode && hovering {
                 quickButtons
             }

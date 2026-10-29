@@ -16,6 +16,7 @@ Every thing in Kopie has exactly one name. Source of truth for UI copy and stori
 | Fallback | Give up on direct paste, copy to the clipboard, and tell the user | degrade, backup |
 | Capture | Recording a copy the user makes anywhere | addition, import |
 | Missed-copy badge | Small popover row shown when a capture tick was skipped | warning, alert |
+| Burst | A rapid multi-copy group collapsed into one history row | multi-copy group, stack |
 | Masked item | A clip whose content looks like a secret; hidden until revealed | sensitive flag, redacted |
 | Ignore list | Apps whose copies Kopie never captures | blacklist, exclusion |
 | Secure field | Any field with Secure Input active (passwords, logins); direct paste is skipped there | protected field |

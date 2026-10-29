@@ -42,3 +42,20 @@ func groupByDay(_ items: [ClipboardItem]) -> [DayGroup] {
     
     return result
 }
+
+extension GroupedEntry: Identifiable {
+    public var id: Int64 { payload.id }
+}
+
+extension GroupedEntry {
+    /// Total member count when this entry is a burst, else nil (S-014 badge).
+    var burstCount: Int? {
+        if case .group(let g) = self { return g.members.count }
+        return nil
+    }
+}
+
+/// Flattens one day's items into render entries with optional burst grouping.
+func entriesForDay(_ group: DayGroup, burstGrouping: Bool) -> [GroupedEntry] {
+    burstGrouping ? CopyGrouper.group(group.items) : group.items.map(GroupedEntry.single)
+}
