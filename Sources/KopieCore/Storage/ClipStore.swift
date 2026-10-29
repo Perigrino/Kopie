@@ -611,6 +611,51 @@ public final class ClipStore {
         }
     }
 
+    /// Returns image items that need OCR processing (null/empty ocr_text, not sensitive).
+    /// - Parameter limit: Maximum number of rows to return.
+    /// - Returns: Array of (id, imageRelPath) tuples ordered by created_at ASC.
+    public func imagesNeedingOCR(limit: Int) -> [(Int64, String)] {
+        let rows = (try? db.rows("""
+            SELECT id, image_rel_path FROM clipboard_items
+            WHERE kind = 'image'
+              AND (ocr_text IS NULL OR ocr_text = '')
+              AND is_sensitive = 0
+              AND image_rel_path IS NOT NULL
+            ORDER BY created_at ASC
+            LIMIT ?
+            """, [limit])) ?? []
+        return rows.compactMap { r in
+            guard let id = r[0] as? Int64, let relPath = r[1] as? String, !relPath.isEmpty else { return nil }
+            return (id, relPath)
+        }
+    }
+
+    /// Returns the total count of non-sensitive image items (for backfill progress reporting).
+    public func totalNonSensitiveImageCount() -> Int {
+        let rows = (try? db.rows("""
+            SELECT COUNT(*) FROM clipboard_items
+            WHERE kind = 'image'
+              AND is_sensitive = 0
+              AND image_rel_path IS NOT NULL
+            """, [])) ?? []
+        return (rows.first?[0] as? Int64).map(Int.init) ?? 0
+    }
+
+    /// Sets the sensitive flag on an item (primarily for testing).
+    @discardableResult
+    public func setSensitive(_ id: Int64, _ flag: Bool, kind: String? = nil) -> Bool {
+        let sql: String
+        let params: [Any?]
+        if let kind = kind {
+            sql = "UPDATE clipboard_items SET is_sensitive = ?, sensitive_kind = ? WHERE id = ?"
+            params = [flag ? 1 : 0, kind, id]
+        } else {
+            sql = "UPDATE clipboard_items SET is_sensitive = ? WHERE id = ?"
+            params = [flag ? 1 : 0, id]
+        }
+        return (try? db.run(sql, params)) != nil
+    }
+
     /// Rewrites a stored text row into a real image row (used when the text
     /// flavor carried the image itself, e.g. a base64 data URI).
     public func convertToImage(id: Int64, imageRelPath: String, thumbRelPath: String?,
