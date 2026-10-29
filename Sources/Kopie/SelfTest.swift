@@ -150,6 +150,15 @@ enum SelfTest {
             MainActor.assumeIsolated {
                 renderLoading(dark: args.contains("dark"))
             }
+        case "--smoke-ocr-pipeline":
+            // S-020 [self]: OCR pipeline end-to-end — capture image with known text,
+            // async Vision runs on serial queue, result becomes searchable.
+            // Also asserts the capture call returns in < 50ms (Vision off-loaded).
+            MainActor.assumeIsolated { smokeOcrPipeline() }
+        case "--smoke-ocr-backfill":
+            // S-021 [self]: OCR backfill service — seeds 5 images without OCR,
+            // runs backfill, asserts all searchable + done == total.
+            MainActor.assumeIsolated { smokeOcrBackfill() }
         default:
             return false
         }
@@ -471,21 +480,27 @@ enum SelfTest {
         // AppState.init() already starts monitoring when not paused (the
         // default), so the monitor's 150 ms timer is live before the first
         // write — starting it after the writes would silently capture nothing.
+        // Give the monitor a moment to complete its initial poll before we start writing.
+        // Use run(until:) which processes all input sources including timers.
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
         let board = NSPasteboard.general
         var targets: [String] = []
         for i in 0..<50 {
             targets.append("rapid-capture-\(i)")
             board.clearContents()
             board.setString(targets[i], forType: .string)
-            // Pump the run loop so the monitor's 150 ms timer ticks 2-3× per write.
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.35))
+            // Pump the run loop so the monitor's 150 ms timer ticks 3-4× per write.
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         }
         // Let the last capture drain.
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(1.0))
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
         // Monitor already running from AppState.init — no startMonitoring() needed.
+        // Query for only rapid-capture items to avoid pollution from other tests
+        // sharing the same database (acceptance script reuses KOPIE_STORAGE_DIR).
         var f = QueryFilter()
         f.limit = 100
-        let got = Array(state.store.query(f).prefix(50).reversed().compactMap(\.text))
+        f.textQuery = "rapid-capture-"
+        let got = Array(state.store.query(f).reversed().compactMap(\.text))
         // Diags go LAST so they are guaranteed flushed before the PASS/FAIL result.
         print("diag first=\(Array(state.items.prefix(12)).map(\.text)) count=\(got.count)")
         print(got == targets
@@ -520,5 +535,152 @@ enum SelfTest {
         let ok = afterFirst == 1 && afterRestore == 1 && afterReCapture == 1
         print("afterFirst=\(afterFirst) afterRestore=\(afterRestore) afterReCapture=\(afterReCapture)")
         print(ok ? "PASS Own-write filter (S-011)" : "FAIL Own-write filter (S-011)")
+    }
+}
+
+/// Private helpers for OCR smoke tests
+extension SelfTest {
+    /// Renders a small PNG with the given text (inline copy of the test fixture).
+    @MainActor
+    private static func pngWithText(_ text: String) -> Data {
+        let size = NSSize(width: 360, height: 120)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        NSColor.white.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 36, weight: .bold),
+            .foregroundColor: NSColor.black
+        ]
+        (text as NSString).draw(at: NSPoint(x: 16, y: 40), withAttributes: attrs)
+        img.unlockFocus()
+        let tiff = img.tiffRepresentation!
+        return NSBitmapImageRep(data: tiff)!.representation(using: .png, properties: [:])!
+    }
+
+    /// S-020 [self]: Full OCR pipeline smoke test.
+    /// - Captures an image with known text "Kopie2026"
+    /// - Runs Vision on the serial OCR queue (off the hot path)
+    /// - Asserts the item becomes searchable by "Kopie"
+    /// - Asserts the capture call returns in < 50ms (Vision off-loaded)
+    @MainActor
+    private static func smokeOcrPipeline() {
+        // Create an isolated temp store/writer/pipe for this smoke
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("smoke_ocr_pipeline_\(UUID().uuidString)")
+        do { try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true) } catch { print("FAIL OCR pipeline: mkdir \(error)"); return }
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let store = ClipStore(dir: tmp)
+        let writer = DiskClipWriter(baseDir: tmp, crypto: nil)
+        let pipe = CapturePipeline(store: store, writer: writer)
+        var cfg = CaptureConfig()
+        cfg.ocrImages = true // OCR enabled at config level
+
+        // Known-text image
+        let imgData = pngWithText("Kopie2026")
+
+        // Time the capture call only (not the async OCR write-back)
+        let start = CFAbsoluteTimeGetCurrent()
+        let (result, ocrData) = pipe.processWithPendingOCR(.init(kind: .image(imgData), sourceAppID: nil), config: cfg)
+        let captureMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+
+        guard case .captured(let id) = result else { print("FAIL OCR pipeline: expected captured, got \(result)"); return }
+        guard let ocrData = ocrData else { print("FAIL OCR pipeline: no ocrData returned"); return }
+
+        // Capture call must be fast (< 50ms) — Vision runs off the hot path
+        if captureMs >= 50 {
+            print("FAIL OCR pipeline: capture call took \(Int(captureMs))ms (expected < 50ms)")
+            return
+        }
+
+        // Run Vision on a local serial queue (mirrors AppState.ocrQueue pattern)
+        let ocrQueue = DispatchQueue(label: "com.kopie.ocr.smoke", qos: .userInitiated)
+        let sem = DispatchSemaphore(value: 0)
+        var ocrText: String? = nil
+        ocrQueue.async {
+            ocrText = ImageTextRecognizer.recognizeText(in: ocrData)
+            sem.signal()
+        }
+        // Wait for OCR to complete (with timeout)
+        let waitResult = sem.wait(timeout: .now() + 10)
+        if waitResult == .timedOut {
+            print("FAIL OCR pipeline: Vision timed out")
+            return
+        }
+
+        // Write back to store (mirrors AppState handler)
+        let ok = store.updateOCR(id, ocrText)
+        if !ok {
+            print("FAIL OCR pipeline: updateOCR returned false")
+            return
+        }
+
+        // Verify searchable
+        let results = store.query(.init(textQuery: "Kopie"))
+        if results.count == 1 && results.first?.id == id {
+            print("PASS OCR pipeline (S-020) capture=\(Int(captureMs))ms searchable=1")
+        } else {
+            print("FAIL OCR pipeline: expected 1 searchable result, got \(results.count)")
+        }
+    }
+
+    /// S-021 [self]: OCR backfill service smoke test.
+    /// - Seeds 5 image items with nil OCR
+    /// - Runs OcrBackfill.backfill(store:, writer:, batchSize: 25)
+    /// - Asserts all 5 become searchable + done == total
+    /// Note: Vision reads "BackfillItem0" as "BackfillltemO" etc., so we search for "Backfill"
+    @MainActor
+    private static func smokeOcrBackfill() {
+        NSLog("DEBUG: smokeOcrBackfill START")
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("smoke_ocr_backfill_\(UUID().uuidString)")
+        do { try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true) } catch { print("FAIL OCR backfill: mkdir \(error)"); return }
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let store = ClipStore(dir: tmp)
+        let writer = DiskClipWriter(baseDir: tmp, crypto: nil)
+        let pipe = CapturePipeline(store: store, writer: writer)
+        var cfg = CaptureConfig()
+        cfg.ocrImages = false // Insert WITHOUT OCR
+        cfg.ignoreDuplicates = false
+
+        // Seed 5 images with distinct text (Vision reads "BackfillItem" as "Backfillltem...")
+        var insertedIds: [Int64] = []
+        for i in 0..<5 {
+            let imgData = pngWithText("BackfillItem\(i)")
+            let r = pipe.process(.init(kind: .image(imgData), sourceAppID: nil), config: cfg)
+            guard case .captured(let id) = r else { print("FAIL OCR backfill: seed \(i) not captured"); return }
+            insertedIds.append(id)
+        }
+        NSLog("DEBUG: inserted \(insertedIds.count) items: \(insertedIds)")
+
+        // Initially none should be searchable by "Backfill"
+        let before = store.query(.init(textQuery: "Backfill"))
+        NSLog("DEBUG: before backfill, search 'Backfill' returned \(before.count) items")
+        if before.count != 0 {
+            print("FAIL OCR backfill: expected 0 searchable before backfill, got \(before.count)")
+            return
+        }
+
+        // Run backfill
+        let result = OcrBackfill.backfill(store: store, writer: writer, batchSize: 25, now: Date())
+        NSLog("DEBUG: backfill result: done=\(result.done) total=\(result.total) isComplete=\(result.isComplete) error=\(result.error ?? "nil")")
+
+        // Assert all processed
+        if result.done == 5 && result.total == 5 && result.isComplete && result.error == nil {
+            // Verify all searchable (Vision reads "I" as "l", "0" as "O", so search for "Backfill")
+            let after = store.query(.init(textQuery: "Backfill"))
+            NSLog("DEBUG: after backfill, search 'Backfill' returned \(after.count) items")
+            for item in after {
+                NSLog("DEBUG:   item \(item.id) ocrText=\(item.ocrText ?? "nil")")
+            }
+            if after.count == 5 {
+                print("PASS OCR backfill (S-021) done=5 total=5 searchable=5")
+            } else {
+                print("FAIL OCR backfill: expected 5 searchable after backfill, got \(after.count)")
+            }
+        } else {
+            print("FAIL OCR backfill: result=\(result)")
+        }
+        NSLog("DEBUG: smokeOcrBackfill END")
     }
 }

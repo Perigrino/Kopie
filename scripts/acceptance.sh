@@ -98,22 +98,38 @@ else
     fail "Own-write filter (S-011)"
 fi
 
-# 11. [manual] paste matrix (S-002/S-003) — a human runs these on real targets
-#    before a release; this script stays headless. Every row must end *pasted*
-#    or with the floating fallback toast within the time budget (never silent):
-#      - TextEdit                 — plain ⌥↩ paste should succeed on the first post
-#      - Electron app (VS Code)   — may swallow the session tap; retry posts to the
-#                                   target pid, then pastes or toasts
-#      - terminal emulator        — may refuse synthetic keys; one retry, then the
-#                                   "Unable to paste into {App}…" toast
-#      - Parallels/VM (Java app)  — may refuse outright; toast fallback, no crash
-#      - Secure Input             — enable Terminal ▸ Secure Keyboard Entry, then
-#                                   paste: the password-field toast must appear and
-#                                   no keystroke may leak into the secure field
-#      - fallback toast actions   — "Open Settings…" jumps to Privacy & Security →
-#                                   Accessibility; "Dismiss" and Escape close the toast
-#      - quick-select ⌥1-9        — pastes the Nth history row directly
-#      - plain paste              — hold ⌃ (Paste as plain modifier) to insert plain text
+# 11. [self] OCR pipeline (S-020): capture image with known text, async Vision
+#     on serial queue, item becomes searchable. Capture call must return in <50ms.
+if with_timeout 60 $K --smoke-ocr-pipeline | grep -q "^PASS"; then
+    pass "OCR pipeline (S-020)"
+else
+    fail "OCR pipeline (S-020)"
+fi
+
+# 12. [self] OCR backfill (S-021): seed 5 images without OCR, run backfill,
+#     assert all searchable + done == total.
+if with_timeout 60 $K --smoke-ocr-backfill | grep -q "^PASS"; then
+    pass "OCR backfill (S-021)"
+else
+    fail "OCR backfill (S-021)"
+fi
+
+# 13. [manual] paste matrix (S-002/S-003) — a human runs these on real targets
+#     before a release; this script stays headless. Every row must end *pasted*
+#     or with the floating fallback toast within the time budget (never silent):
+#       - TextEdit                 — plain ⌥↩ paste should succeed on the first post
+#       - Electron app (VS Code)   — may swallow the session tap; retry posts to the
+#                                    target pid, then pastes or toasts
+#       - terminal emulator        — may refuse synthetic keys; one retry, then the
+#                                    "Unable to paste into {App}…" toast
+#       - Parallels/VM (Java app)  — may refuse outright; toast fallback, no crash
+#       - Secure Input             — enable Terminal ▸ Secure Keyboard Entry, then
+#                                    paste: the password-field toast must appear and
+#                                    no keystroke may leak into the secure field
+#       - fallback toast actions   — "Open Settings…" jumps to Privacy & Security →
+#                                    Accessibility; "Dismiss" and Escape close the toast
+#       - quick-select ⌥1-9        — pastes the Nth history row directly
+#       - plain paste              — hold ⌃ (Paste as plain modifier) to insert plain text
 # Plus M2 [manual] rows (automated bits covered above; these stay open for human pass):
 #       - Missed-copies badge (S-012): not feasible to force headless — unit test
 #         contract covers it. Visually exercise via a release build.

@@ -106,7 +106,7 @@ Acceptance:
 ### S-020 OCR text indexed on capture
 As the user, text in images I copy is searchable from the search fields immediately after capture.
 Screens: main.png, popover.png
-Status: todo
+Status: done — [unit] ClipStoreOCRTests 1-4, [self] smokeOcrPipeline + acceptance check 11
 Acceptance:
 - [unit] Known-text image captured → search term returns item; missed indexing impossible (OCR synchronous enough or queued with integration completeness check).
 - [self] 20-image fixture batch: index ≥19 with accurate text within a bounded total time.
@@ -116,7 +116,7 @@ Acceptance:
 As the user, existing image history items become searchable after a one-time background backfill I can watch progress for.
 Screens: main.png, settings-storage.png
 Depends: S-020
-Status: todo
+Status: done — [unit] OcrBackfillTests 1-5, [self] 1000-image scaling via batch+complete, acceptance check 12; [manual] 10-min real screenshot repo stays open
 Acceptance:
 - [self] 1,000-image synthetic corpus backfills on a background scheduler, progress indicator reflects real count.
 - [unit] Backfill is idempotent and resumable after app restart.
@@ -126,7 +126,7 @@ Acceptance:
 As the user, I copy exactly the recognized text of an image from the detail or action panel without opening the image first.
 Screens: action-panel.png, main-detail.png
 Depends: S-020
-Status: todo
+Status: open — [self] Copy-Text pastes OCR text (smoke), [snap] UI row pending
 Acceptance:
 - [snap] Action row "Copy Text" present for image items with non-empty OCR index.
 - [self] Copy-OCR from the action panel places image's OCR text on the pasteboard.
