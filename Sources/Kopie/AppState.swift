@@ -47,6 +47,10 @@ final class AppState: ObservableObject {
     private var monitor: ClipboardMonitor!
     private let job: RetentionJob
     private let settings = SettingsStore.shared
+    /// Serial queue for off-main OCR work (Vision framework). Ensures
+    /// recognized text is written back on a single worker thread; the store
+    /// is single-thread-bound until S-031 FULLMUTEX.
+    private let ocrQueue = DispatchQueue(label: "com.kopie.ocr", qos: .userInitiated)
     /// S-013 interaction recency for the capture read gate. Read and touched
     /// on the main thread where `tick()` and every touch site run.
     private var captureActivity = CaptureRecency(activeWindow: 90)
@@ -144,10 +148,19 @@ final class AppState: ObservableObject {
         self.job = RetentionJob(store: store)
         let monitor = ClipboardMonitor(readChangeCount: { NSPasteboard.general.changeCount },
                                        reader: { ClipboardReader.read() },
-                                       handler: { [weak pipeline] c in
-            guard let pipeline else { return }
+                                       handler: { [weak pipeline, weak self] c in
+            guard let pipeline, let self else { return }
             let cfg = SettingsStore.shared.captureConfig
-            let r = pipeline.process(c, config: cfg)
+            let (r, ocrData) = pipeline.processWithPendingOCR(c, config: cfg)
+            if let data = ocrData, let id = r.capturedID {
+                self.ocrQueue.async {
+                    let text = ImageTextRecognizer.recognizeText(in: data)
+                    DispatchQueue.main.async {
+                        _ = self.store.updateOCR(id, text)
+                        NotificationCenter.default.post(name: .kopieStoreChanged, object: nil)
+                    }
+                }
+            }
             if case .captured = r { NotificationCenter.default.post(name: .kopieStoreChanged, object: nil) }
         },
                                        readGate: { [weak self] in

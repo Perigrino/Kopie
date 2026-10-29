@@ -445,6 +445,30 @@ public final class ClipStore {
         }
         return true
     }
+
+    /// Updates the OCR text for an image item and rebuilds its search index.
+    /// - Parameters:
+    ///   - id: The item ID (must be an image item).
+    ///   - text: The recognized OCR text, or `nil` to clear it (no-op, returns true).
+    /// - Returns: `true` if the row was found and updated (or no-op for nil), `false` otherwise.
+    @discardableResult
+    public func updateOCR(_ id: Int64, _ text: String?) -> Bool {
+        guard text != nil else { return true } // nil is a no-op
+        guard let item = get(id), item.kind == .image else { return false }
+
+        // Update the ocr_text column
+        let ok = (try? db.run("UPDATE clipboard_items SET ocr_text = ? WHERE id = ?", [text, id])) != nil
+        guard ok else { return false }
+
+        // Rebuild search index for this row
+        _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
+        if let item = get(id), !item.isSensitive {
+            let tokens = searchTokens(for: item)
+            if !tokens.isEmpty { indexTokens(tokens, for: id) }
+        }
+        return true
+    }
+
     public func bumpAccessed(_ id: Int64, _ now: Date = .now) {
         _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
     }
