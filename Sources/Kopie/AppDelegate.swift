@@ -149,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // MARK: - Windows
 
     func showMainWindow(closePopover: Bool = false) {
+        state.touchCaptureActivity()
         prePopoverApp = nil   // the user is coming to Kopie on purpose: don't bounce focus back out
         if closePopover { popover?.performClose(nil) }
         if mainWindow == nil {
@@ -215,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func applyVisibility() { statusItem.isVisible = SettingsStore.shared.showMenuBarIcon }
     @objc func togglePopover() {
+        state.touchCaptureActivity()
         guard let button = statusItem.button else { return }
         if popover.isShown { popover.performClose(nil) }
         else {
@@ -546,7 +548,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let spec = SettingsStore.shared.pasteBindings.globalHotkey
         lastRegisteredHotKey = spec
         let ok = HotKeyManager.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
-            MainActor.assumeIsolated { self?.showFromHotKey() }
+            MainActor.assumeIsolated {
+                self?.state.touchCaptureActivity()
+                self?.showFromHotKey()
+            }
         }
         // A silently-failed registration means the global hotkey is simply
         // dead — impossible to debug from user behavior alone.

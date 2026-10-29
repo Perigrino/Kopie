@@ -33,9 +33,18 @@ final class AppState: ObservableObject {
     private lazy var historyExporter = HistoryExporter(store: store, writer: writer)
     private let pipeline: CapturePipeline
     private let restoreSVC: RestoreService
-    private let monitor: ClipboardMonitor
+    /// IUO: assigned once in `init`, right after the monitor is created. The
+    /// read-gate closure passed to the monitor's initializer captures `self`,
+    /// so every stored property must be provably initialized by then — an
+    /// implicitly-unwrapped stored `var` satisfies that check (it defaults to
+    /// nil) without leaking into any use site (`start Monitoring` runs long
+    /// after init).
+    private var monitor: ClipboardMonitor!
     private let job: RetentionJob
     private let settings = SettingsStore.shared
+    /// S-013 interaction recency for the capture read gate. Read and touched
+    /// on the main thread where `tick()` and every touch site run.
+    private var captureActivity = CaptureRecency(activeWindow: 90)
 
     private static let thumbCache = NSCache<NSString, NSImage>()
 
@@ -126,6 +135,8 @@ final class AppState: ObservableObject {
         thumbGenerator = ThumbnailGenerator()
         let pipeline = CapturePipeline(store: store, writer: writer)
         let restore = RestoreService()
+        self.pipeline = pipeline; self.restoreSVC = restore
+        self.job = RetentionJob(store: store)
         let monitor = ClipboardMonitor(readChangeCount: { NSPasteboard.general.changeCount },
                                        reader: { ClipboardReader.read() },
                                        handler: { [weak pipeline] c in
@@ -133,9 +144,13 @@ final class AppState: ObservableObject {
             let cfg = SettingsStore.shared.captureConfig
             let r = pipeline.process(c, config: cfg)
             if case .captured = r { NotificationCenter.default.post(name: .kopieStoreChanged, object: nil) }
+        },
+                                       readGate: { [weak self] in
+            guard let self else { return true }
+            if !self.settings.captureOnlyWhileInteracting { return true }
+            return self.captureActivity.mayRead()
         })
-        self.pipeline = pipeline; self.restoreSVC = restore; self.monitor = monitor
-        self.job = RetentionJob(store: store)
+        self.monitor = monitor
         self.isPaused = settings.monitorPaused
         self.excludedApps = settings.excludedApps
         self.ambientSpeed = settings.ambientSpeed
@@ -280,6 +295,12 @@ final class AppState: ObservableObject {
         // Only announce real user-facing pause→resume flips, never launch-time
         // auto-starts or redundant calls.
         if wasPaused { KopieNotifications.resumed() }
+    }
+
+    /// Records a user session interaction for the S-013 read gate. Call on
+    /// the main thread at hotkey/popover/main-window/settings activation.
+    func touchCaptureActivity() {
+        captureActivity.touch()
     }
     func pauseMonitoring() {
         let wasRunning = !isPaused

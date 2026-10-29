@@ -43,6 +43,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let sensitiveDataPolicy = "sensitiveDataPolicy"
         public static let sensitiveDisabledRules = "sensitiveDisabledRules"
         public static let autoExpireOneTimeSecrets = "autoExpireOneTimeSecrets"
+        public static let captureOnlyWhileInteracting = "captureOnlyWhileInteracting"
         public static let screenShieldMode = "screenShieldMode"
     }
 
@@ -147,7 +148,8 @@ public final class SettingsStore: @unchecked Sendable {
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
                         Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
                         Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText,
-                        Keys.showMenuBarPreview, Keys.autoExpireOneTimeSecrets]
+                        Keys.showMenuBarPreview, Keys.autoExpireOneTimeSecrets,
+                        Keys.captureOnlyWhileInteracting]
         for key in boolKeys {
             if let value = defaults.object(forKey: key), value as? Bool == nil {
                 defaults.removeObject(forKey: key)
@@ -432,6 +434,14 @@ public final class SettingsStore: @unchecked Sendable {
             return mode
         }
         set { defaults.set(newValue.rawValue, forKey: Keys.screenShieldMode) }
+    }
+
+    /// S-013: when true, background capture reads happen only inside the
+    /// interaction recency window (macOS 15+ prompt contract). Default false:
+    /// the app is "opted in" to always-on capture.
+    public var captureOnlyWhileInteracting: Bool {
+        get { defaults.object(forKey: Keys.captureOnlyWhileInteracting) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Keys.captureOnlyWhileInteracting) }
     }
 
     /// The capture configuration derived from the current settings.

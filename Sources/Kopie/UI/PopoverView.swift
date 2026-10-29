@@ -58,6 +58,7 @@ struct PopoverView: View {
             highlightedIndex = state.items.isEmpty ? nil : 0
         }
         .onAppear {
+            state.touchCaptureActivity()
             // No refresh() here: AppDelegate refreshes before it shows the
             // popover, and every capture refreshes via .kopieStoreChanged.
             // Refreshing again on appear doubled the queries on every open
