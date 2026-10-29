@@ -2,6 +2,18 @@ import SwiftUI
 import KopieCore
 import AppKit
 
+/// Simple thread-safe lock for macOS 13+ (UnfairLock available on macOS 14+).
+private final class UnfairLock<State>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: State
+    init(initialState: State) { self.state = initialState }
+    func withLock<T>(_ body: (inout State) throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body(&state)
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var items: [ClipboardItem] = []
@@ -51,6 +63,14 @@ final class AppState: ObservableObject {
     /// recognized text is written back on a single worker thread; the store
     /// is single-thread-bound until S-031 FULLMUTEX.
     private let ocrQueue = DispatchQueue(label: "com.kopie.ocr", qos: .userInitiated)
+
+    /// Serial queue for OCR backfill work (background priority).
+    private let ocrBackfillQueue = DispatchQueue(label: "com.kopie.ocr.backfill", qos: .background)
+
+    /// Live progress of the OCR backfill run. Published so the Settings UI can observe it.
+    @Published var ocrBackfillProgress: OcrBackfill.Progress? = nil
+
+    nonisolated(unsafe) private var ocrBackfillTimer: Timer?
     /// S-013 interaction recency for the capture read gate. Read and touched
     /// on the main thread where `tick()` and every touch site run.
     private var captureActivity = CaptureRecency(activeWindow: 90)
@@ -210,10 +230,20 @@ final class AppState: ObservableObject {
             isReturnLaunch = false
         }
         startRetentionTimer()
+        startOCRBackfillScheduler()
+
+        // Cancel OCR backfill when app resigns active (mirrors AppDelegate pattern)
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidResignActive),
+                                               name: NSApplication.didResignActiveNotification, object: nil)
+    }
+
+    @objc private func appDidResignActive() {
+        stopOCRBackfillScheduler()
     }
     deinit {
         NotificationCenter.default.removeObserver(self)
         retentionTimer?.invalidate()
+        ocrBackfillTimer?.invalidate()
     }
 
     nonisolated(unsafe) private var retentionTimer: Timer?
@@ -223,6 +253,64 @@ final class AppState: ObservableObject {
             MainActor.assumeIsolated { self?.runRetentionPolicy() }
         }
         RunLoop.main.add(retentionTimer!, forMode: .common)
+    }
+
+    /// Starts the OCR backfill scheduler if enabled in settings.
+    /// Runs on a 500ms timer, processing batches on a background queue.
+    private func startOCRBackfillScheduler() {
+        guard settings.ocrImages, settings.ocrBackfillAuto else { return }
+        stopOCRBackfillScheduler()
+
+        // Capture the total once at start for stable progress reporting
+        let total = store.totalNonSensitiveImageCount()
+        guard total > 0 else { return } // Nothing to backfill
+
+        // Use a thread-safe counter for cumulative progress
+        let progressCounter = UnfairLock(initialState: 0)
+
+        ocrBackfillTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+
+            // Check if we should continue (settings may have changed)
+            guard self.settings.ocrImages, self.settings.ocrBackfillAuto else {
+                timer.invalidate()
+                Task { @MainActor in self.ocrBackfillProgress = nil }
+                return
+            }
+
+            self.ocrBackfillQueue.async { [weak self] in
+                guard let self else { return }
+                let priorDone = progressCounter.withLock { $0 }
+                // Access store/writer through self (MainActor-isolated but safe for this background work)
+                let progress = OcrBackfill.backfillStep(
+                    store: self.store,
+                    writer: self.writer,
+                    batchSize: 25,
+                    total: total,
+                    priorDone: priorDone
+                )
+                progressCounter.withLock { $0 = progress.done }
+
+                Task { @MainActor in
+                    self.ocrBackfillProgress = progress
+                    if progress.isComplete {
+                        self.stopOCRBackfillScheduler()
+                        // Clear progress after a short delay so the "complete" state is visible
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            if self.ocrBackfillProgress?.isComplete == true {
+                                self.ocrBackfillProgress = nil
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(ocrBackfillTimer!, forMode: .common)
+    }
+
+    private func stopOCRBackfillScheduler() {
+        ocrBackfillTimer?.invalidate()
+        ocrBackfillTimer = nil
     }
 
     @objc private func storeChanged() { refresh() }

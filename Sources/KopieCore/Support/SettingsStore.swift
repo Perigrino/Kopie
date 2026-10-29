@@ -35,6 +35,7 @@ public final class SettingsStore: @unchecked Sendable {
         public static let ambientSpeed = "ambientSpeed"
         public static let trackSourceApp = "trackSourceApp"
         public static let ocrImages = "ocrImages"
+        public static let ocrBackfillAuto = "ocrBackfillAuto"
         public static let pasteDirect = "pasteDirect"
         public static let pasteAsPlainText = "pasteAsPlainText"
         public static let pasteQueueIDs = "pasteQueueIDs"
@@ -148,7 +149,7 @@ public final class SettingsStore: @unchecked Sendable {
         let boolKeys = [Keys.monitorPaused, Keys.saveText, Keys.saveImages, Keys.saveFiles,
                         Keys.ignoreDuplicates, Keys.autoDeleteFavorites, Keys.launchAtLogin,
                         Keys.showMenuBarIcon, Keys.hasSeenOnboarding,
-                        Keys.trackSourceApp, Keys.ocrImages, Keys.pasteDirect, Keys.pasteAsPlainText,
+                        Keys.trackSourceApp, Keys.ocrImages, Keys.ocrBackfillAuto, Keys.pasteDirect, Keys.pasteAsPlainText,
                         Keys.showMenuBarPreview, Keys.autoExpireOneTimeSecrets,
                         Keys.captureOnlyWhileInteracting, Keys.groupedCaptures]
         for key in boolKeys {
@@ -341,6 +342,13 @@ public final class SettingsStore: @unchecked Sendable {
     public var ocrImages: Bool {
         get { defaults.object(forKey: Keys.ocrImages) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Keys.ocrImages) }
+    }
+
+    /// Automatically run OCR backfill for pre-existing images on launch
+    /// (enabled by default so history becomes searchable without user action).
+    public var ocrBackfillAuto: Bool {
+        get { defaults.object(forKey: Keys.ocrBackfillAuto) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.ocrBackfillAuto) }
     }
 
     /// Enables ⌥↩ / ⌥-click / ⌥1-9 direct paste into the frontmost app

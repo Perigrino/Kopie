@@ -1,4 +1,5 @@
 import SwiftUI
+import KopieCore
 
 struct SettingsStorageTab: View {
     @EnvironmentObject var state: AppState
@@ -28,9 +29,32 @@ struct SettingsStorageTab: View {
                 }
                 Text("Clear Cache removes regenerable thumbnails. Clear All Data removes every item and file.")
                     .font(.caption).foregroundStyle(.secondary)
-                
+
+                // OCR Backfill Progress
+                if let progress = state.ocrBackfillProgress {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("OCR Backfill").font(.headline)
+                        HStack {
+                            Text("Recognizing text in images…")
+                                .font(.body)
+                            Spacer()
+                            Text("\(progress.done) / \(progress.total)")
+                                .font(.body.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: Double(progress.done), total: Double(progress.total > 0 ? progress.total : 1))
+                            .animation(.easeInOut(duration: 0.3), value: progress.done)
+                        if progress.isComplete {
+                            Text("Backfill complete")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+
                 Divider()
-                
+
                 Group {
                     Text("Export / Import").font(.headline)
                     HStack {
