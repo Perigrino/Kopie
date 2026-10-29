@@ -154,3 +154,54 @@ private func text(_ s: String) -> CapturedContent {
         #expect(captured == ["two", "three"])
     }
 }
+
+// MARK: - S-011 self-write wiring (Task 2)
+
+/// RestoreService must tell the monitor when its staging write is DONE, so the
+/// count-based own-write filter can skip the change it just created.
+@Suite struct SelfWriteWiringTests {
+
+    @Test func restoreServiceFiresDidWriteAfterStaging() {
+        // RestoreService stages content then fires onDidWrite — the wiring
+        // calls monitor.noteSelfWrite() in it. Simulate the AppState pair:
+        let board = CountBoard()
+        let m = board.makeMonitor(reader: { board.pendingContent }) { _ in }
+        let restore = RestoreService()
+        var didWriteFires = 0
+        restore.onDidWrite = { didWriteFires += 1; m.noteSelfWrite() }
+        board.count = 200
+        // RestoreService writes to the REAL pasteboard here (test host is a
+        // macOS process; NSPasteboard.general is available in SPM tests).
+        let writer = ClipWriterStub()
+        restore.restore(makeItem(text: "self-written-string"), writer: writer, plainTextOnly: false)
+        #expect(didWriteFires == 1, "onDidWrite fires exactly once per restore")
+        m.tick()
+        // The restore bumped the real changeCount; noteSelfWrite recorded it
+        // so the poll skips instead of re-capturing our own staging.
+        // (Reader here returns nil; the assertion is that no anomaly fired.)
+        #expect(m.missedCount == 0, "own write after restore does not count as a miss")
+    }
+
+    private func makeItem(text t: String) -> ClipboardItem {
+        ClipboardItem(id: 1, kind: .text, createdAt: Date(), lastAccessedAt: Date(), isFavorite: false,
+                      contentHash: "h-\(t)", text: t, imageRelPath: nil, thumbRelPath: nil,
+                      fileSize: t.utf8.count, width: nil, height: nil)
+    }
+}
+
+/// No-op ClipWriter stub: satisfies the protocol's full surface so
+/// RestoreService.restore compiles and runs without touching disk.
+final class ClipWriterStub: ClipWriter {
+    @discardableResult
+    func writeImage(_ data: Data, hashHex: String) throws -> ImageStorageInfo {
+        ImageStorageInfo(imageRelPath: "", thumbRelPath: nil, width: 0, height: 0, byteSize: 0)
+    }
+    func imageData(relPath: String) throws -> Data { Data() }
+    func loadThumb(relPath: String?) -> NSImage? { nil }
+    func fileSize(relPath: String) -> Int { 0 }
+    @discardableResult
+    func writeRichText(_ data: Data, hashHex: String) throws -> String { "" }
+    @discardableResult
+    func writeHTML(_ data: Data, hashHex: String) throws -> String { "" }
+    func loadRichText(relPath: String) -> Data? { nil }
+}

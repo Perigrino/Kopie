@@ -5,6 +5,10 @@ import AppKit
 /// `onAboutToWrite` lets the monitor suppress the resulting (self-created) change.
 public final class RestoreService {
     public var onAboutToWrite: (() -> Void)?
+    /// Fired AFTER the staging write completed on the system pasteboard.
+    /// The app layer calls `ClipboardMonitor.noteSelfWrite()` here so the
+    /// count-based own-write filter skips the just-completed write (S-011).
+    public var onDidWrite: (() -> Void)?
     public init() {}
 
     /// `plainTextOnly` stages only the `.string` flavor, stripping RTF/HTML
@@ -40,5 +44,6 @@ public final class RestoreService {
             }
         }
         _ = board.changeCount
+        onDidWrite?()
     }
 }

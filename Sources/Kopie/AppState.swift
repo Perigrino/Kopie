@@ -141,6 +141,7 @@ final class AppState: ObservableObject {
         self.ambientSpeed = settings.ambientSpeed
 
         restore.onAboutToWrite = { [weak self] in self?.monitor.beginSuppression() }
+        restore.onDidWrite = { [weak self] in self?.monitor.noteSelfWrite() }
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged),
                                                name: .kopieStoreChanged, object: nil)
         // One-time migration: clean up text entries that were really image
@@ -381,13 +382,15 @@ final class AppState: ObservableObject {
     }
 
     /// Stages plain text on the system clipboard WITHOUT recording it in
-    /// history (used by e.g. color-swatch copy actions). The monitor
-    /// suppresses the resulting change, so nothing new is captured.
+    /// history (used by e.g. color-swatch copy actions). The count-based
+    /// own-write filter skips the resulting change (S-011). No suppression
+    /// counter is needed here because the change happens synchronously and
+    /// noteSelfWrite() records the post-write count directly.
     func copyTextToClipboard(_ text: String) {
-        monitor.beginSuppression()
         let board = NSPasteboard.general
         board.clearContents()
         board.setString(text, forType: .string)
+        monitor.noteSelfWrite()
     }
 
     /// Context-menu convenience: toggles the item's presence in the queue.
