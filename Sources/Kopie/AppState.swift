@@ -126,7 +126,8 @@ final class AppState: ObservableObject {
         thumbGenerator = ThumbnailGenerator()
         let pipeline = CapturePipeline(store: store, writer: writer)
         let restore = RestoreService()
-        let monitor = ClipboardMonitor(reader: { ClipboardReader.read() },
+        let monitor = ClipboardMonitor(readChangeCount: { NSPasteboard.general.changeCount },
+                                       reader: { ClipboardReader.read() },
                                        handler: { [weak pipeline] c in
             guard let pipeline else { return }
             let cfg = SettingsStore.shared.captureConfig
