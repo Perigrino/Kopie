@@ -109,6 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.statusItem.button?.image = AppIcon.menuBarImage(paused: paused)
             }
             .store(in: &cancellables)
+        // Sparkle's schedule starts only after the launch surface is gone, so
+        // an update prompt can never sit on top of the welcome splash.
+        state.$showOnboarding
+            .removeDuplicates()
+            .filter { !$0 }
+            .prefix(1)
+            .sink { [weak self] _ in self?.startUpdaterIfNeeded() }
+            .store(in: &cancellables)
         applyVisibility()
 
         registerGlobalHotkey()
@@ -307,6 +315,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Kopie", action: #selector(openFromMenu), keyEquivalent: "o")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
+        let updatesItem = menu.addItem(withTitle: "Check for Updates…",
+                                       action: #selector(checkForUpdatesFromMenu),
+                                       keyEquivalent: "")
+        updatesItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath",
+                                    accessibilityDescription: updatesItem.title)
         menu.addItem(.separator())
         let paused = SettingsStore.shared.monitorPaused
         let pauseItem = menu.addItem(withTitle: paused ? "Resume Monitoring" : "Pause Monitoring",
@@ -368,7 +381,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func openFromMenu() { GlobalActions.openMain?() }
     @objc private func openSettingsFromMenu() { showSettings() }
+    @objc private func checkForUpdatesFromMenu() { UpdaterCoordinator.shared.checkForUpdates() }
     @objc private func quitFromMenu() { NSApp.terminate(nil) }
+
+    /// Starts Sparkle once the launch surface is gone. After the first launch
+    /// the landing page auto-dismisses, so this lands a moment later.
+    private func startUpdaterIfNeeded() {
+        guard !UpdaterCoordinator.shared.isStarted else { return }
+        UpdaterCoordinator.shared.start()
+    }
 
     @objc private func toggleMonitoringFromMenu() {
         if SettingsStore.shared.monitorPaused { state.startMonitoring() }

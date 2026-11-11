@@ -8,25 +8,118 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   package:
-    name: Build DMG
+    name: Build, publish, appcast
     runs-on: macos-latest
+    env:
+      # Pinned so the appcast format and the framework never drift silently.
+      SPARKLE_VERSION: "2.10.1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          # CFBundleVersion is `git rev-list --count HEAD`; a shallow clone
+          # would stamp every release with the same build number.
+          fetch-depth: 0
 
-      - name: Package DMG
-        run: npm run package
+      - name: Build and package
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1)"
+          TAG="${GITHUB_REF_NAME#v}"
+          [ "$VERSION" = "$TAG" ] || {
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $VERSION"
+            exit 1
+          }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # Phase 1: intentionally ad-hoc signed. Developer ID + notarization
+          # are a later phase and are not configured here.
+          npm run package
+          cp dist/Kopie.dmg "dist/Kopie-$VERSION.dmg"
+
+      - name: Extract release notes
+        run: |
+          set -euo pipefail
+          # Release notes come from CHANGELOG.md, the same section users read
+          # in the repo — one source, no second copy to forget.
+          awk -v v="$VERSION" 'BEGIN { p = 0 }
+            $0 ~ "^## (\\[" v "\\]|" v ")([^0-9.]|$)" { p = 1; next }
+            p && /^## / { exit }
+            p { print }' CHANGELOG.md | awk 'NF { p = 1 } p' > "dist/Kopie-$VERSION.md" || true
+          [ -s "dist/Kopie-$VERSION.md" ] || printf 'Kopie %s\n' "$VERSION" > "dist/Kopie-$VERSION.md"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Kopie ${{ env.VERSION }}
+          # The DMG is served from the Release asset, not from GitHub Pages.
+          files: |
+            dist/Kopie-${{ env.VERSION }}.dmg
+            dist/Kopie-${{ env.VERSION }}.md
+          body_path: dist/Kopie-${{ env.VERSION }}.md
+          fail_on_unmatched_files: true
+
+      - name: Publish signed appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$SPARKLE_PRIVATE_KEY" ] || {
+            echo "::error::SPARKLE_PRIVATE_KEY secret is missing; the appcast must be signed"
+            exit 1
+          }
+          # Sparkle's command-line tools, pinned to the framework version.
+          curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xJf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
+          chmod +x "$RUNNER_TEMP/sparkle/bin/generate_appcast"
+
+          # Build the appcast from the same DMG that was uploaded as a Release
+          # asset, so the EdDSA signature and the enclosure length match.
+          APPCAST_DIR="$RUNNER_TEMP/appcast"
+          mkdir -p "$APPCAST_DIR"
+          cp "dist/Kopie-$VERSION.dmg" "dist/Kopie-$VERSION.md" "$APPCAST_DIR/"
+
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          trap 'rm -f "$RUNNER_TEMP/sparkle.key"' EXIT
+          "$RUNNER_TEMP/sparkle/bin/generate_appcast" \
+            --ed-key-file "$RUNNER_TEMP/sparkle.key" \
+            --download-url-prefix "$RELEASE_URL" \
+            --release-notes-url-prefix "$RELEASE_URL" \
+            --maximum-deltas 0 \
+            "$APPCAST_DIR"
+
+          # Pages only hosts appcast.xml; binaries and notes live on Releases.
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git worktree add -B gh-pages updates origin/gh-pages
+          else
+            git worktree add --detach updates
+            (
+              cd updates
+              git checkout --orphan gh-pages
+              git rm -rf . >/dev/null 2>&1 || true
+            )
+          fi
+          cp "$APPCAST_DIR/appcast.xml" updates/appcast.xml
+
+          (
+            cd updates
+            git add appcast.xml
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -m "Publish Kopie $VERSION appcast" || true
+            git push origin gh-pages
+          )
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
           name: Kopie-dmg
-          path: dist/Kopie.dmg
+          path: dist/Kopie-${{ env.VERSION }}.dmg
           if-no-files-found: error
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/Kopie.dmg
-          generate_release_notes: true

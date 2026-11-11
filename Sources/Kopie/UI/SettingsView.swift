@@ -74,6 +74,18 @@ struct SettingsView: View {
                 railItem(tab)
             }
             Spacer()
+
+            // Quiet identity footer: version first (useful, and the anchor
+            // update prompts refer to), signature under it.
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Kopie \(AppVersion.short)")
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.textTertiary(for: scheme))
+                DeveloperCredit()
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 2)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 14)

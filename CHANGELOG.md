@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.0 — November 11, 2026
+
+- **In-app updates** — signed appcast checks, Sparkle's native update panel with release notes, Remind Me Later / Skip This Version, and a Software Update section in Settings. Updates are EdDSA-signed and verified before installation.
+- **Distribution** — DMGs and release notes are published as GitHub Releases; the signed appcast is served from GitHub Pages.
+- **Phase 1 signing** — builds are ad-hoc signed and not notarized. The first download may need right-click **Open** or **System Settings → Privacy & Security → Open Anyway**.
+- **Made by Perigrino** — a quiet maker's mark in the main window sidebar and the Settings rail.
+
 ## 2.5.0 — October 22, 2026 · "Ember" redesign
 
 Full visual redesign of every Kopie surface, built from `docs/redesign/prototype.html` and applied 1:1 to the app.

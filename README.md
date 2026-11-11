@@ -26,7 +26,7 @@ Copy something, find it later, paste it back.
 
 - **Private by design** — your clipboard never leaves your Mac. No cloud, no accounts, no telemetry.
 - **Fast** — menu-bar and keyboard first, opens instantly, searches as you type.
-- **Native** — Swift + SwiftUI, no third-party dependencies.
+- **Native** — Swift + SwiftUI, with one small audited dependency (Sparkle) for signed in-app updates.
 - **Open source** — the whole app is public on [GitHub](https://github.com/Perigrino/Kopie). Read the code, verify exactly what it does with your clipboard, and contribute.
 
 ## Features
@@ -46,6 +46,12 @@ Copy something, find it later, paste it back.
 
 macOS 13 Ventura or later.
 
+## Updates
+
+Kopie checks a signed [appcast](https://perigrino.github.io/Kopie/appcast.xml) at most once a day and can install new versions in place. Every update archive is verified with an Ed25519 key embedded in the app, independent of HTTPS. Downloads and release notes live on GitHub Releases; the appcast lives on GitHub Pages. You can also check manually from **Settings → General → Software Update** or the menu-bar menu.
+
+Phase 1 releases are ad-hoc signed and not notarized. The first download may require right-click **Open** or **System Settings → Privacy & Security → Open Anyway**; updates Sparkle installs in place are signature-verified and release their quarantine flag before launch. See [docs/UPDATES.md](docs/UPDATES.md) for the release checklist, Gatekeeper details, and the key setup.
+
 ## Development
 
 ```bash
@@ -56,4 +62,4 @@ npm run package   # release build + dist/Kopie.dmg
 bash scripts/acceptance.sh   # headless full workflow
 ```
 
-Ad-hoc signed by default; set `KOPIE_SIGN_IDENTITY` before `npm run package` to Developer-ID sign.
+Ad-hoc signed by default so local builds keep their Accessibility grant; set `KOPIE_SIGN_IDENTITY` before `npm run package` to sign with a local identity. Phase 1 CI releases are ad-hoc only; Developer ID signing and notarization are planned for Phase 2.

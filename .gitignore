@@ -5,3 +5,8 @@ dist/
 .swiftpm/
 xcuserdata/
 .freebuff/
+# EdDSA private key used by Sparkle's generate_appcast. Never commit; the
+# matching public key is scripts/sparkle-public-key.txt.
+.sparkle-private-key
+# Temporary gh-pages worktree used by the release workflow.
+updates/

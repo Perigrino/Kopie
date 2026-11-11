@@ -24,6 +24,11 @@ struct SettingsGeneralTab: View {
     @State private var plainModifier: UInt32 = SettingsStore.shared.pasteBindings.plainModifier
     /// Inline conflict errors keyed by role (S-004: inline, never an alert).
     @State private var conflictError: [PasteBindings.Role: String] = [:]
+    /// Mirrors Sparkle's `automaticallyChecksForUpdates` and its last-check
+    /// stamp; both live behind `UpdaterCoordinator` so this view never imports
+    /// Sparkle or reaches into its scheduler.
+    @State private var autoCheckUpdates = UpdaterCoordinator.shared.automaticallyChecksForUpdates
+    @State private var lastUpdateCheck: Date? = UpdaterCoordinator.shared.lastUpdateCheckDate
 
     var body: some View {
         Form {
@@ -114,6 +119,34 @@ struct SettingsGeneralTab: View {
             } header: {
                 Text("Menu bar list")
             }
+            Section {
+                Toggle("Check for updates automatically", isOn: $autoCheckUpdates)
+                    .onChange(of: autoCheckUpdates) { on in
+                        UpdaterCoordinator.shared.setAutomaticallyChecksForUpdates(on)
+                    }
+                HStack {
+                    Button("Check for Updates…") {
+                        UpdaterCoordinator.shared.checkForUpdates()
+                        refreshUpdateInfo()
+                    }
+                    .disabled(!UpdaterCoordinator.shared.isSupported)
+                    Spacer()
+                    if let lastUpdateCheck {
+                        Text("Last checked \(lastUpdateCheck.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Kopie \(AppVersion.short) (build \(AppVersion.build))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("Updates are checked at most once a day. Downloads are EdDSA-signed and verified before they replace the app; you can skip a version or be reminded later.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Software Update")
+            }
         }
         .formStyle(.grouped)
         .padding(8)
@@ -122,6 +155,7 @@ struct SettingsGeneralTab: View {
             axGranted = PasteDirectService.isPermissionGranted
             seedLegacyHotkeyIntoPasteBindings()
             refreshBindings()
+            refreshUpdateInfo()
         }
         .onReceive(NotificationCenter.default.publisher(for: .kopieAppearanceChanged)) { _ in
             appearance = SettingsStore.shared.appearance
@@ -302,5 +336,11 @@ struct SettingsGeneralTab: View {
     private func refreshBindings() {
         pasteBindings = SettingsStore.shared.pasteBindings
         plainModifier = pasteBindings.plainModifier
+    }
+
+    /// Mirrors Sparkle's persisted updater settings into view state.
+    private func refreshUpdateInfo() {
+        autoCheckUpdates = UpdaterCoordinator.shared.automaticallyChecksForUpdates
+        lastUpdateCheck = UpdaterCoordinator.shared.lastUpdateCheckDate
     }
 }

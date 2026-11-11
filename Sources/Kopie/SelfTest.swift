@@ -89,7 +89,8 @@ enum SelfTest {
             // Renders a settings tab offscreen. Arg: tab name (general,
             // clipboard, cleanup, privacy, storage, security).
             MainActor.assumeIsolated {
-                renderSettings(tab: args.count > 1 ? args[1] : "privacy")
+                renderSettings(tab: args.count > 1 ? args[1] : "privacy",
+                               bottom: args.contains("bottom"))
             }
         case "--smoke-render-main":
             // Renders MainView (sidebar + list + detail) offscreen for
@@ -282,7 +283,7 @@ enum SelfTest {
 
     /// Renders one Settings tab for visual verification.
     @MainActor
-    private static func renderSettings(tab: String) {
+    private static func renderSettings(tab: String, bottom: Bool = false) {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let state = AppState()
@@ -304,6 +305,15 @@ enum SelfTest {
         win.orderFrontRegardless()
         RunLoop.main.run(until: Date().addingTimeInterval(1.2))
         host.view.layoutSubtreeIfNeeded()
+        if bottom, let scroll = firstScrollView(in: host.view) {
+            // Long forms (General now has an update section at the end) need a
+            // bottom capture for visual checks that the fold does not hide it.
+            let documentHeight = scroll.documentView?.frame.height ?? 0
+            let maxY = max(0, documentHeight - scroll.contentView.bounds.height)
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: maxY))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        }
         guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else { print("ERR bitmap"); return }
         host.view.cacheDisplay(in: host.view.bounds, to: rep)
         if let png = rep.representation(using: .png, properties: [:]) {
@@ -312,6 +322,14 @@ enum SelfTest {
             print("WROTE \(out) \(png.count)B")
         }
         Self.writeWindowCapture(win, name: "kopie-settings-\(tab)")
+    }
+
+    private static func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView { return scroll }
+        for subview in view.subviews {
+            if let found = firstScrollView(in: subview) { return found }
+        }
+        return nil
     }
 
     /// Renders the main window (sidebar, history list, detail panel).

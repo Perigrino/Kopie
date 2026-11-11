@@ -222,6 +222,12 @@ struct MainView: View {
                 scheme: scheme) {
                     GlobalActions.openSettings?()
                 }
+
+            // The maker's mark, pinned under Settings rather than in the
+            // hazard path of the list: present if you look, silent if you don't.
+            DeveloperCredit()
+                .padding(.leading, 10)
+                .padding(.top, 10)
         }
         .padding(10)
     }
