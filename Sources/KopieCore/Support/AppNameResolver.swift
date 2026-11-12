@@ -51,19 +51,4 @@ public enum AppNameResolver {
         defer { lock.unlock() }
         cache.removeAll()
     }
-    
-    /// Returns a short, user-friendly label for the bundle ID.
-    /// For example: "com.apple.Safari" → "Safari"
-    /// Uses the last path component if it looks like a bundle ID.
-    public static func shortLabel(for bundleID: String) -> String {
-        let name = self.name(for: bundleID)
-        // If name is the same as bundleID, try to extract from last component
-        if name == bundleID {
-            let parts = bundleID.split(separator: ".")
-            if let last = parts.last {
-                return String(last).localizedCapitalized
-            }
-        }
-        return name
-    }
 }

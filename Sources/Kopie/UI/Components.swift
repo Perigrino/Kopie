@@ -4,18 +4,7 @@ enum DS {
     static let pad: CGFloat = 16
 }
 
-/// Full-bleed Ember canvas behind onboarding / windows.
-/// In dark: near-black with two radial glows (from Theme.canvas).
-/// In light: warm paper (#FBF8F4) with same gradient mechanics.
-struct ThemeBackground: View {
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        Theme.canvas(for: scheme)
-            .ignoresSafeArea()
-    }
-}
-/// Full-bleed pastel base behind the onboarding — kept for the landing page.
-/// The redesigned onboarding uses ThemeBackground instead; BreathingBackground stays for splash/landing.
+/// Full-bleed pastel base behind the splash / landing screen.
 struct BreathingBackground: View {
     var reduceMotion: Bool
     /// Seconds per breath cycle; `nil` (or Reduce Motion) keeps the gradient

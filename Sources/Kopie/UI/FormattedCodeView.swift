@@ -64,7 +64,6 @@ struct FormattedCodeView: View {
     private var lineCount: Int { max(formatted.split(separator: "\n", omittingEmptySubsequences: false).count, 1) }
 
     // Fixed dark code-block palette (independent of appearance).
-    private var surfaceColor: Color { CodeCardPalette.surface }
     private var fg: Color { CodeCardPalette.fg }
     private var gutterColor: Color { CodeCardPalette.gutter }
 

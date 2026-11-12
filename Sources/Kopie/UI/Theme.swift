@@ -51,10 +51,6 @@ enum Theme {
         scheme == .dark ? Color(red: 1, green: 107 / 255, blue: 107 / 255)       // #FF6B6B
             : Color(red: 179 / 255, green: 38 / 255, blue: 30 / 255)               // #B3261E
     }
-    static func dangerBackground(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? danger(for: scheme).opacity(0.16)
-            : Color(red: 179 / 255, green: 38 / 255, blue: 30 / 255).opacity(0.10)
-    }
     static func warn(for scheme: ColorScheme) -> Color {
         scheme == .dark ? Color(red: 1, green: 162 / 255, blue: 58 / 255)        // #FFA23A
             : Color(red: 169 / 255, green: 90 / 255, blue: 8 / 255)                // #A95A08
@@ -92,16 +88,6 @@ enum Theme {
         scheme == .dark ? Color.white.opacity(0.08)
             : Color(red: 31 / 255, green: 22 / 255, blue: 16 / 255).opacity(0.10)
     }
-    /// Gradient hairline endpoints — `--edge-a` / `--edge-b`.
-    static func edgeA(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.14)
-            : Color(red: 31 / 255, green: 22 / 255, blue: 16 / 255).opacity(0.13)
-    }
-    static func edgeB(for scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.02)
-            : Color(red: 31 / 255, green: 22 / 255, blue: 16 / 255).opacity(0.05)
-    }
-
     /// Hover and selection fills for rows — `--row-hover` / `--row-sel`.
     static func rowHover(for scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.white.opacity(0.07) : .white
@@ -151,11 +137,6 @@ enum Theme {
     static var gradient: LinearGradient {
         LinearGradient(colors: [accent, accentMagenta], startPoint: .top, endPoint: .bottom)
     }
-    /// `--grad-h` — horizontal variant for display flourishes.
-    static var gradientHorizontal: LinearGradient {
-        LinearGradient(colors: [accent, accentMagenta], startPoint: .leading, endPoint: .trailing)
-    }
-
     // MARK: Radii
 
     static let cardRadius: CGFloat = 16
@@ -165,8 +146,6 @@ enum Theme {
 
     // MARK: Type (≤4 sizes / 2 weights rule)
 
-    static let tPage: CGFloat = 26
-    static let tSection: CGFloat = 17
     static let tRow: CGFloat = 14
     static let tMeta: CGFloat = 11
 }

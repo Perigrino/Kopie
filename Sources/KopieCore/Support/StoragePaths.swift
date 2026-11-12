@@ -8,7 +8,6 @@ public enum StoragePaths {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return appSupport.appendingPathComponent("Kopie", isDirectory: true)
     }
-    public static func dbURL() -> URL { baseDir().appendingPathComponent("kopie.db") }
     public static func imagesDir() -> URL { baseDir().appendingPathComponent("images", isDirectory: true) }
     public static func thumbsDir() -> URL { baseDir().appendingPathComponent("thumbs", isDirectory: true) }
     public static func rtfDir() -> URL { baseDir().appendingPathComponent("rtf", isDirectory: true) }

@@ -39,7 +39,6 @@ public final class SettingsStore: @unchecked Sendable {
         public static let pasteDirect = "pasteDirect"
         public static let pasteAsPlainText = "pasteAsPlainText"
         public static let pasteQueueIDs = "pasteQueueIDs"
-        public static let splitPosition = "splitPosition"
         public static let showMenuBarPreview = "showMenuBarPreview"
         public static let sensitiveDataPolicy = "sensitiveDataPolicy"
         public static let sensitiveDisabledRules = "sensitiveDisabledRules"
@@ -386,12 +385,6 @@ public final class SettingsStore: @unchecked Sendable {
                 defaults.set(data, forKey: Keys.pasteQueueIDs)
             }
         }
-    }
-
-    /// Stores the horizontal split position (0…1) of the main view's list/detail divider.
-    public var splitPosition: Double {
-        get { let v = defaults.double(forKey: Keys.splitPosition); return v > 0 ? v : 0.4 }
-        set { defaults.set(newValue, forKey: Keys.splitPosition) }
     }
 
     // MARK: - Sensitive-data sentinel

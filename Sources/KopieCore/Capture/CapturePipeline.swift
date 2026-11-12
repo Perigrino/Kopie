@@ -6,7 +6,6 @@ public enum CaptureResult: Equatable {
     case paused
     case disabledKind
     case excludedApp
-    case duplicate
     case empty
     /// Content matched a secret rule under the `skipCapture` policy.
     case sensitiveSkipped

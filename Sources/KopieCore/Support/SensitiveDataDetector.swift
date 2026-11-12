@@ -51,19 +51,6 @@ public struct SensitiveMatch: Equatable, Sendable {
             }
         }
 
-        /// SF Symbol for the row badge.
-        public var symbol: String {
-            switch self {
-            case .apiToken: return "key.fill"
-            case .jwt: return "key.horizontal.fill"
-            case .privateKey: return "lock.fill"
-            case .credentialURL: return "link.badge.plus" // unused fallback; badge stays a key
-            case .bearerHeader: return "key.fill"
-            case .highEntropy: return "questionmark.key.fill"
-            case .seedPhrase: return "banknote.fill"
-            case .paymentCard: return "creditcard.fill"
-            }
-        }
     }
 
     public let kind: Kind

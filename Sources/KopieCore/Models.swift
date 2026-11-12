@@ -7,17 +7,8 @@ public enum ClipKind: String, Sendable {
 }
 
 /// Coarse time bucket used by the "Today"/"Yesterday" sidebar filters.
-public enum DateBucket: String, CaseIterable, Identifiable, Sendable {
-    case today, yesterday, older, all
-    public var id: String { rawValue }
-    public var label: String {
-        switch self {
-        case .today: "Today"
-        case .yesterday: "Yesterday"
-        case .older: "Older"
-        case .all: "All"
-        }
-    }
+public enum DateBucket: String, Sendable {
+    case today, yesterday, older
 }
 
 /// Filters applied by `ClipStore.query`. All optional; nil/empty = no filter on that axis.

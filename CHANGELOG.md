@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.1 — November 12, 2026
+
+- **Internal cleanup** — removed unused view tokens, animation helpers, and dead model/capture cases. No behavior change.
+
 ## 2.7.0 — November 11, 2026
 
 - **In-app updates** — signed appcast checks, Sparkle's native update panel with release notes, Remind Me Later / Skip This Version, and a Software Update section in Settings. Updates are EdDSA-signed and verified before installation.

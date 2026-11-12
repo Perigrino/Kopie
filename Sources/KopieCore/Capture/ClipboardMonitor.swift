@@ -46,8 +46,6 @@ public final class ClipboardMonitor: @unchecked Sendable {
     /// Fired on the caller-chosen thread whenever missedCount increases.
     public var onAnomaly: ((Int) -> Void)?
 
-    public var isRunning: Bool { timer != nil }
-
     /// - Parameters:
     ///   - readChangeCount: injectable read of the pasteboard's changeCount
     ///     (production: `{ NSPasteboard.general.changeCount }`; tests: a closure
