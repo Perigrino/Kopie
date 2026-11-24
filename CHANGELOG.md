@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.7.2 — November 24, 2026
+
+- **Clipboard capture reliability** — rewritten capture pipeline so rapid
+  copying no longer loses items. Detection (50ms polling) is decoupled
+  from slow DB/disk processing via a bounded queue and serial background
+  processor with retries. The vague "arrived too fast" warning is
+  replaced with honest, actionable banners. Thread-safe ClipStore,
+  diagnostics tracking, and stress-tested bursts of up to 50 rapid copies.
+
 ## 2.7.1 — November 12, 2026
 
 - **Internal cleanup** — removed unused view tokens, animation helpers, and dead model/capture cases. No behavior change.
