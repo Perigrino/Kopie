@@ -1,11 +1,17 @@
 import Foundation
 
-/// SQLite-backed clipboard metadata store. All methods are synchronous and
-/// intended to be called from a single serial queue/thread.
+/// SQLite-backed clipboard metadata store. Thread-safe: all public methods
+/// are serialized behind an internal lock so the store can be called from
+/// the main thread (UI queries) and a background queue (capture processing)
+/// without race conditions.
 public final class ClipStore {
     private let db: Database
     private let baseDir: URL
     private let crypto: HistoryCrypto?
+    /// Serializes all database access so the store is safe to call from
+    /// multiple threads (main UI thread + capture processor background queue).
+    /// Recursive: some public methods call other public methods internally.
+    private let storeLock = NSRecursiveLock()
     public private(set) var bootstrapError: String?
     /// True when at-rest encryption is active (Keychain key available).
     public private(set) var encryptionAvailable: Bool
@@ -129,6 +135,21 @@ public final class ClipStore {
     private func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
     private func date(_ ms: Int64) -> Date { Date(timeIntervalSince1970: Double(ms) / 1000) }
 
+    /// Executes `body` while holding the store lock, serializing database
+    /// access across threads.
+    private func synchronized<T>(_ body: () throws -> T) rethrows -> T {
+        storeLock.lock()
+        defer { storeLock.unlock() }
+        return try body()
+    }
+
+    /// Executes `body` while holding the store lock (non-throwing variant).
+    private func synchronized<T>(_ body: () -> T) -> T {
+        storeLock.lock()
+        defer { storeLock.unlock() }
+        return body()
+    }
+
     /// Encrypts text before storage when a key is available.
     private func storedText(_ t: String) -> String {
         guard let c = crypto, let enc = try? AtRestText.encode(t, crypto: c) else { return t }
@@ -201,27 +222,29 @@ public final class ClipStore {
 
     @discardableResult
     public func insert(_ item: ClipboardItem) -> Int64 {
-        do {
-            _ = try db.run(
-        "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text,is_sensitive,sensitive_kind,expires_after_use) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
-         item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
-         item.width.flatMap(Int64.init), item.height.flatMap(Int64.init),
-         item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms),
-         item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath, item.ocrText,
-         item.isSensitive ? 1 : 0, item.sensitiveKind, item.expiresAfterUse ? 1 : 0])
-            let id = db.scalarInt64("SELECT last_insert_rowid()")
-            // Sentinel-flagged rows are kept out of the search index on
-            // purpose: they should be findable via the Sensitive filter (by
-            // kind), never by guessing their content.
-            let tokens = item.isSensitive ? [] : searchTokens(for: item)
-            if !tokens.isEmpty {
-                indexTokens(tokens, for: id)
+        try! synchronized {
+            do {
+                _ = try db.run(
+            "INSERT INTO clipboard_items(kind,created_at,last_accessed_at,is_favorite,content_hash,text_content,image_rel_path,thumb_rel_path,file_size,width,height,source_app,copy_count,last_copied_at,is_pinned,pinned_at,rich_text_rel_path,ocr_text,is_sensitive,sensitive_kind,expires_after_use) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [item.kind.rawValue, ms(item.createdAt), ms(item.lastAccessedAt), item.isFavorite ? 1 : 0,
+             item.contentHash, item.text.map(storedText), item.imageRelPath, item.thumbRelPath, Int64(item.fileSize),
+             item.width.flatMap(Int64.init), item.height.flatMap(Int64.init),
+             item.sourceApp, Int64(item.copyCount), item.lastCopiedAt.map(ms),
+             item.isPinned ? 1 : 0, item.pinnedAt.map(ms), item.richTextRelPath, item.ocrText,
+             item.isSensitive ? 1 : 0, item.sensitiveKind, item.expiresAfterUse ? 1 : 0])
+                let id = db.scalarInt64("SELECT last_insert_rowid()")
+                // Sentinel-flagged rows are kept out of the search index on
+                // purpose: they should be findable via the Sensitive filter (by
+                // kind), never by guessing their content.
+                let tokens = item.isSensitive ? [] : searchTokens(for: item)
+                if !tokens.isEmpty {
+                    indexTokens(tokens, for: id)
+                }
+                return id
+            } catch {
+                bootstrapError = "\(error)"
+                return -1
             }
-            return id
-        } catch {
-            bootstrapError = "\(error)"
-            return -1
         }
     }
 
@@ -265,40 +288,42 @@ public final class ClipStore {
     }
 
     public func query(_ f: QueryFilter) -> [ClipboardItem] {
-        // Bypass trigram index for regex queries
-        if !f.textQuery.isEmpty, !f.useRegex, let indexed = searchIndexMatches(f) {
-            return indexed
-        }
-        var whereC = [String](); var params: [Any?] = []
-        if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
-        if f.favoritesOnly { whereC.append("is_favorite = 1") }
-        if f.pinnedOnly { whereC.append("is_pinned = 1") }
-        if f.sensitiveOnly { whereC.append("is_sensitive = 1") }
-        if let b = f.bucket {
-            let cal = Calendar.current
-            let now = Date.now
-            if b == .today {
-                whereC.append("created_at >= ?"); params.append(ms(cal.startOfDay(for: now)))
-            } else if b == .yesterday {
-                let yest = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: now))!
-                whereC.append("created_at >= ? AND created_at < ?")
-                params.append(ms(yest)); params.append(ms(cal.startOfDay(for: now)))
-            } else if b == .older {
-                whereC.append("created_at < ?"); params.append(ms(cal.startOfDay(for: now)))
+        synchronized {
+            // Bypass trigram index for regex queries
+            if !f.textQuery.isEmpty, !f.useRegex, let indexed = searchIndexMatches(f) {
+                return indexed
             }
+            var whereC = [String](); var params: [Any?] = []
+            if let k = f.kind { whereC.append("kind = ?"); params.append(k.rawValue) }
+            if f.favoritesOnly { whereC.append("is_favorite = 1") }
+            if f.pinnedOnly { whereC.append("is_pinned = 1") }
+            if f.sensitiveOnly { whereC.append("is_sensitive = 1") }
+            if let b = f.bucket {
+                let cal = Calendar.current
+                let now = Date.now
+                if b == .today {
+                    whereC.append("created_at >= ?"); params.append(ms(cal.startOfDay(for: now)))
+                } else if b == .yesterday {
+                    let yest = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: now))!
+                    whereC.append("created_at >= ? AND created_at < ?")
+                    params.append(ms(yest)); params.append(ms(cal.startOfDay(for: now)))
+                } else if b == .older {
+                    whereC.append("created_at < ?"); params.append(ms(cal.startOfDay(for: now)))
+                }
+            }
+            let whereSQL = whereC.isEmpty ? "" : "WHERE " + whereC.joined(separator: " AND ")
+            // No index available (no key, or query shorter than a trigram): fetch a
+            // generous window and filter in memory after decryption.
+            let limit = f.textQuery.isEmpty ? f.limit : max(f.limit, 1000)
+            let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY is_pinned DESC, pinned_at DESC, \(Self.listOrder) LIMIT ?"
+            params.append(limit)
+            let rows = (try? db.rows(sql, params)) ?? []
+            var items = rows.map { map($0) }
+            if !f.textQuery.isEmpty {
+                items = match(items, query: f.textQuery, isRegex: f.useRegex)
+            }
+            return items
         }
-        let whereSQL = whereC.isEmpty ? "" : "WHERE " + whereC.joined(separator: " AND ")
-        // No index available (no key, or query shorter than a trigram): fetch a
-        // generous window and filter in memory after decryption.
-        let limit = f.textQuery.isEmpty ? f.limit : max(f.limit, 1000)
-        let sql = "SELECT \(Self.cols) FROM clipboard_items \(whereSQL) ORDER BY is_pinned DESC, pinned_at DESC, \(Self.listOrder) LIMIT ?"
-        params.append(limit)
-        let rows = (try? db.rows(sql, params)) ?? []
-        var items = rows.map { map($0) }
-        if !f.textQuery.isEmpty {
-            items = match(items, query: f.textQuery, isRegex: f.useRegex)
-        }
-        return items
     }
 
     /// Index-backed text search: matches token hashes in SQL, then decrypts and
@@ -365,64 +390,78 @@ public final class ClipStore {
     }
 
     public func get(_ id: Int64) -> ClipboardItem? {
-        let rows = (try? db.rows("SELECT \(Self.cols) FROM clipboard_items WHERE id = ?", [id])) ?? []
-        return rows.first.map { map($0) }
+        synchronized {
+            let rows = (try? db.rows("SELECT \(Self.cols) FROM clipboard_items WHERE id = ?", [id])) ?? []
+            return rows.first.map { map($0) }
+        }
     }
     
     /// Returns existing item with matching content hash, if any.
     public func getByHash(_ hash: String) -> ClipboardItem? {
-        let rows = (try? db.rows("SELECT \(Self.cols) FROM clipboard_items WHERE content_hash = ? LIMIT 1", [hash])) ?? []
-        return rows.first.map { map($0) }
+        synchronized {
+            let rows = (try? db.rows("SELECT \(Self.cols) FROM clipboard_items WHERE content_hash = ? LIMIT 1", [hash])) ?? []
+            return rows.first.map { map($0) }
+        }
     }
     
     /// Updates an existing item when the same content is re-copied.
     /// Increments copy count, updates timestamps, and updates source app.
     public func updateRecopy(_ id: Int64, sourceApp: String?, now: Date) {
-        _ = try? db.run("""
-            UPDATE clipboard_items 
-            SET copy_count = copy_count + 1,
-                last_copied_at = ?,
-                last_accessed_at = ?,
-                source_app = ?
-            WHERE id = ?
-        """, [ms(now), ms(now), sourceApp, id])
+        synchronized {
+            _ = try? db.run("""
+                UPDATE clipboard_items 
+                SET copy_count = copy_count + 1,
+                    last_copied_at = ?,
+                    last_accessed_at = ?,
+                    source_app = ?
+                WHERE id = ?
+            """, [ms(now), ms(now), sourceApp, id])
+        }
     }
     
     public func setFavorite(_ id: Int64, _ flag: Bool) {
-        _ = try? db.run("UPDATE clipboard_items SET is_favorite = ? WHERE id = ?", [flag ? 1 : 0, id])
+        synchronized {
+            _ = try? db.run("UPDATE clipboard_items SET is_favorite = ? WHERE id = ?", [flag ? 1 : 0, id])
+        }
     }
     public func setPinned(_ id: Int64, _ flag: Bool) {
-        _ = try? db.run("UPDATE clipboard_items SET is_pinned = ?, pinned_at = ? WHERE id = ?",
-                        [flag ? 1 : 0, flag ? ms(.now) : nil, id])
+        synchronized {
+            _ = try? db.run("UPDATE clipboard_items SET is_pinned = ?, pinned_at = ? WHERE id = ?",
+                            [flag ? 1 : 0, flag ? ms(.now) : nil, id])
+        }
     }
 
     public func setExpiresAfterUse(_ id: Int64, _ flag: Bool) {
-        _ = try? db.run("UPDATE clipboard_items SET expires_after_use = ? WHERE id = ?",
-                        [flag ? 1 : 0, id])
+        synchronized {
+            _ = try? db.run("UPDATE clipboard_items SET expires_after_use = ? WHERE id = ?",
+                            [flag ? 1 : 0, id])
+        }
     }
 
     /// Deletes unused delete-after-use items older than `cutoff` (pinned and
     /// favorite rows are never touched), returning orphaned content paths.
     @discardableResult
     public func purgeExpiredUnused(olderThan cutoff: Date) -> [String] {
-        var stalePaths = Set<String>()
-        if let rows = try? db.rows(
-            "SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items " +
-            "WHERE expires_after_use = 1 AND created_at < ? AND is_pinned = 0 AND is_favorite = 0",
-            [ms(cutoff)]) {
-            for r in rows {
-                for i in 0..<3 {
-                    if let p = r[i] as? String { stalePaths.insert(p) }
+        synchronized {
+            var stalePaths = Set<String>()
+            if let rows = try? db.rows(
+                "SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items " +
+                "WHERE expires_after_use = 1 AND created_at < ? AND is_pinned = 0 AND is_favorite = 0",
+                [ms(cutoff)]) {
+                for r in rows {
+                    for i in 0..<3 {
+                        if let p = r[i] as? String { stalePaths.insert(p) }
+                    }
                 }
             }
+            let n = (try? db.run(
+                "DELETE FROM clipboard_items WHERE expires_after_use = 1 AND created_at < ? AND is_pinned = 0 AND is_favorite = 0",
+                [ms(cutoff)])) ?? 0
+            sweepOrphanIndex()
+            guard n > 0 else { return [] }
+            stalePaths.subtract(stillReferencedPaths())
+            return Array(stalePaths)
         }
-        let n = (try? db.run(
-            "DELETE FROM clipboard_items WHERE expires_after_use = 1 AND created_at < ? AND is_pinned = 0 AND is_favorite = 0",
-            [ms(cutoff)])) ?? 0
-        sweepOrphanIndex()
-        guard n > 0 else { return [] }
-        stalePaths.subtract(stillReferencedPaths())
-        return Array(stalePaths)
     }
 
     /// Replaces the text of a text item and refreshes everything derived from
@@ -470,7 +509,9 @@ public final class ClipStore {
     }
 
     public func bumpAccessed(_ id: Int64, _ now: Date = .now) {
-        _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
+        synchronized {
+            _ = try? db.run("UPDATE clipboard_items SET last_accessed_at = ? WHERE id = ?", [ms(now), id])
+        }
     }
     /// Deletes the given items and returns the relative paths of their content
     /// files (image, thumbnail, rich text) that are no longer referenced by any
@@ -522,21 +563,28 @@ public final class ClipStore {
         _ = try? db.run("DELETE FROM clipboard_items", [])
         return Array(paths)
     }
-    public func count() -> Int64 { db.scalarInt64("SELECT COUNT(*) FROM clipboard_items") }
+    @discardableResult
+    public func count() -> Int64 {
+        synchronized {
+            db.scalarInt64("SELECT COUNT(*) FROM clipboard_items")
+        }
+    }
 
     public func bytesUsed() -> Int64 {
-        let fm = FileManager.default
-        var total: Int64 = 0
-        for dir in [baseDir.appendingPathComponent("images", isDirectory: true)] {
-            if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
-                for f in files {
-                    if let v = try? f.resourceValues(forKeys: [.fileSizeKey]), let b = v.fileSize {
-                        total += Int64(b)
+        synchronized {
+            let fm = FileManager.default
+            var total: Int64 = 0
+            for dir in [baseDir.appendingPathComponent("images", isDirectory: true)] {
+                if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
+                    for f in files {
+                        if let v = try? f.resourceValues(forKeys: [.fileSizeKey]), let b = v.fileSize {
+                            total += Int64(b)
+                        }
                     }
                 }
             }
+            return total
         }
-        return total
     }
 
     /// Result of a retention purge: how many rows went away plus the relative
@@ -553,29 +601,32 @@ public final class ClipStore {
     /// Purges stale items, returning the deleted row count plus the relative
     /// paths of content files that are no longer referenced by any surviving row.
     public func purgeOlder(olderThan cutoff: Date, deleteFavorites: Bool) -> PurgeResult {
-        // Collect file paths of rows about to be purged, before they're gone.
-        let cond = (deleteFavorites ? "" : "AND is_favorite = 0") + " AND is_pinned = 0"
-        var stalePaths = Set<String>()
-        if let rows = try? db.rows("SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)]) {
-            for r in rows {
-                for i in 0..<3 {
-                    if let p = r[i] as? String { stalePaths.insert(p) }
+        synchronized {
+            // Collect file paths of rows about to be purged, before they're gone.
+            let cond = (deleteFavorites ? "" : "AND is_favorite = 0") + " AND is_pinned = 0"
+            var stalePaths = Set<String>()
+            if let rows = try? db.rows("SELECT image_rel_path, thumb_rel_path, rich_text_rel_path FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)]) {
+                for r in rows {
+                    for i in 0..<3 {
+                        if let p = r[i] as? String { stalePaths.insert(p) }
+                    }
                 }
             }
+            let n = (try? db.run("DELETE FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)])) ?? 0
+            sweepOrphanIndex()
+            guard n > 0 else { return PurgeResult(deleted: 0, orphanedPaths: []) }
+            stalePaths.subtract(stillReferencedPaths())
+            return PurgeResult(deleted: n, orphanedPaths: Array(stalePaths))
         }
-        let n = (try? db.run("DELETE FROM clipboard_items WHERE created_at < ? \(cond)", [ms(cutoff)])) ?? 0
-        sweepOrphanIndex()
-        guard n > 0 else { return PurgeResult(deleted: 0, orphanedPaths: []) }
-        stalePaths.subtract(stillReferencedPaths())
-        return PurgeResult(deleted: n, orphanedPaths: Array(stalePaths))
     }
 
     public func trimToMax(_ max: Int) {
-        let all = count()
-        guard all > Int64(max) else { return }
-        // Keep pinned first, then favorites, then newest; evict the oldest non-pinned non-favorites beyond the cap.
-        // `max` is an Int we control, so inlining is safe.
-        _ = try? db.run("""
+        synchronized {
+            let all = count()
+            guard all > Int64(max) else { return }
+            // Keep pinned first, then favorites, then newest; evict the oldest non-pinned non-favorites beyond the cap.
+            // `max` is an Int we control, so inlining is safe.
+            _ = try? db.run("""
         DELETE FROM clipboard_items
         WHERE id NOT IN (
           SELECT id FROM clipboard_items
@@ -583,7 +634,8 @@ public final class ClipStore {
           LIMIT \(max)
         )
         """, [])
-        sweepOrphanIndex()
+            sweepOrphanIndex()
+        }
     }
 
     // MARK: - One-time cleanups
@@ -591,23 +643,29 @@ public final class ClipStore {
     /// Schema/cleanup version stamp (SQLite `user_version`). Starts at 0 and
     /// only ever moves forward, so one-time cleanups run exactly once per DB.
     public var cleanupVersion: Int64 {
-        db.scalarInt64("PRAGMA user_version")
+        synchronized {
+            db.scalarInt64("PRAGMA user_version")
+        }
     }
 
     public func setCleanupVersion(_ version: Int64) {
-        _ = try? db.run("PRAGMA user_version = \(version)", [])
+        synchronized {
+            _ = try? db.run("PRAGMA user_version = \(version)", [])
+        }
     }
 
     /// Non-favorite text rows for one-time inspection (e.g. pre-fix image-URL
     /// captures). Favorites are never touched by cleanups. Text is decrypted
     /// so the classifier sees the plain content.
     public func textItemsForCleanup() -> [(id: Int64, text: String)] {
-        let rows = (try? db.rows(
-            "SELECT id, text_content FROM clipboard_items WHERE kind = 'text' AND is_favorite = 0 AND text_content IS NOT NULL",
-            [])) ?? []
-        return rows.compactMap { r in
-            guard let id = r[0] as? Int64, let t = r[1] as? String else { return nil }
-            return (id, plainText(t))
+        synchronized {
+            let rows = (try? db.rows(
+                "SELECT id, text_content FROM clipboard_items WHERE kind = 'text' AND is_favorite = 0 AND text_content IS NOT NULL",
+                [])) ?? []
+            return rows.compactMap { r in
+                guard let id = r[0] as? Int64, let t = r[1] as? String else { return nil }
+                return (id, plainText(t))
+            }
         }
     }
 
@@ -615,7 +673,8 @@ public final class ClipStore {
     /// - Parameter limit: Maximum number of rows to return.
     /// - Returns: Array of (id, imageRelPath) tuples ordered by created_at ASC.
     public func imagesNeedingOCR(limit: Int) -> [(Int64, String)] {
-        let rows = (try? db.rows("""
+        synchronized {
+            let rows = (try? db.rows("""
             SELECT id, image_rel_path FROM clipboard_items
             WHERE kind = 'image'
               AND (ocr_text IS NULL OR ocr_text = '')
@@ -624,49 +683,56 @@ public final class ClipStore {
             ORDER BY created_at ASC
             LIMIT ?
             """, [limit])) ?? []
-        return rows.compactMap { r in
-            guard let id = r[0] as? Int64, let relPath = r[1] as? String, !relPath.isEmpty else { return nil }
-            return (id, relPath)
+            return rows.compactMap { r in
+                guard let id = r[0] as? Int64, let relPath = r[1] as? String, !relPath.isEmpty else { return nil }
+                return (id, relPath)
+            }
         }
     }
 
     /// Returns the total count of non-sensitive image items (for backfill progress reporting).
     public func totalNonSensitiveImageCount() -> Int {
-        let rows = (try? db.rows("""
+        synchronized {
+            let rows = (try? db.rows("""
             SELECT COUNT(*) FROM clipboard_items
             WHERE kind = 'image'
               AND is_sensitive = 0
               AND image_rel_path IS NOT NULL
             """, [])) ?? []
-        return (rows.first?[0] as? Int64).map(Int.init) ?? 0
+            return (rows.first?[0] as? Int64).map(Int.init) ?? 0
+        }
     }
 
     /// Sets the sensitive flag on an item (primarily for testing).
     @discardableResult
     public func setSensitive(_ id: Int64, _ flag: Bool, kind: String? = nil) -> Bool {
-        let sql: String
-        let params: [Any?]
-        if let kind = kind {
-            sql = "UPDATE clipboard_items SET is_sensitive = ?, sensitive_kind = ? WHERE id = ?"
-            params = [flag ? 1 : 0, kind, id]
-        } else {
-            sql = "UPDATE clipboard_items SET is_sensitive = ? WHERE id = ?"
-            params = [flag ? 1 : 0, id]
+        synchronized {
+            let sql: String
+            let params: [Any?]
+            if let kind = kind {
+                sql = "UPDATE clipboard_items SET is_sensitive = ?, sensitive_kind = ? WHERE id = ?"
+                params = [flag ? 1 : 0, kind, id]
+            } else {
+                sql = "UPDATE clipboard_items SET is_sensitive = ? WHERE id = ?"
+                params = [flag ? 1 : 0, id]
+            }
+            return (try? db.run(sql, params)) != nil
         }
-        return (try? db.run(sql, params)) != nil
     }
 
     /// Rewrites a stored text row into a real image row (used when the text
     /// flavor carried the image itself, e.g. a base64 data URI).
     public func convertToImage(id: Int64, imageRelPath: String, thumbRelPath: String?,
                                fileSize: Int, width: Int?, height: Int?) {
-        _ = try? db.run("""
+        synchronized {
+            _ = try? db.run("""
         UPDATE clipboard_items
         SET kind = 'image', text_content = NULL,
             image_rel_path = ?, thumb_rel_path = ?, file_size = ?, width = ?, height = ?
         WHERE id = ?
         """, [imageRelPath, thumbRelPath, Int64(fileSize), width.flatMap(Int64.init),
               height.flatMap(Int64.init), id])
-        _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
+            _ = try? db.run("DELETE FROM search_index WHERE item_id = ?", [id])
+        }
     }
 }

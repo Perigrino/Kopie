@@ -173,6 +173,25 @@ struct PopoverView: View {
         return scheme == .light ? Theme.hairline(for: scheme) : .clear
     }
 
+    /// User-friendly capture status banner. Returns nil when everything is
+    /// working normally (no message to show).
+    @ViewBuilder private var captureStatusBanner: some View {
+        switch state.captureStatus {
+        case .idle:
+            // If items were missed because the pasteboard was overwritten,
+            // show a gentle, honest notice — not an alarming warning.
+            if state.missedCopies > 0 {
+                MissedCopiesNotice(count: state.missedCopies, scheme: scheme)
+            } else {
+                EmptyView()
+            }
+        case .processing(let depth):
+            CaptureProcessingBanner(depth: depth, scheme: scheme)
+        case .failed(let error, let retryable):
+            CaptureFailureBanner(error: error, retryable: retryable, scheme: scheme)
+        }
+    }
+
     @ViewBuilder private var content: some View {
         if state.items.isEmpty {
             EmptyStateView(
@@ -186,10 +205,11 @@ struct PopoverView: View {
                 Button("Resume Monitoring") { state.startMonitoring() }.padding(.bottom, 12)
             }
         } else {
-            if state.missedCopies > 0 {
-                MissedCopiesBadge(count: state.missedCopies, scheme: scheme)
-                    .padding(.bottom, 6)
-            }
+            // User-friendly capture status banner. Replaces the old
+            // "arrived too fast" badge with clear, actionable feedback.
+            // Renders EmptyView() when everything is normal (no message).
+            captureStatusBanner
+                .padding(.bottom, 6)
             // Display groups (day buckets) and entries (flat across all day
             // groups) + flat index map. `firstIndex` in the ForEach was O(n²)
             // on every paint (including the hover-driven ones). Uniquing
@@ -635,21 +655,24 @@ struct PopoverView: View {
     }
 }
 
-/// S-012: renders when the monitor accounted un-landed changes. Word on the
-/// row states what happened and what reconcile did; never blames the user.
-struct MissedCopiesBadge: View {
+/// Gentle notice when some clipboard changes were overwritten by macOS before
+/// Kopie could read them. This is a platform limitation, not a user error.
+/// Worded honestly but not alarmingly; the latest copy was always saved.
+struct MissedCopiesNotice: View {
     let count: Int
     let scheme: ColorScheme
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.warn(for: scheme))
-            Text(count == 1 ? "1 copy arrived too fast and may have been missed"
-                            : "\(count) copies arrived too fast and may have been missed")
-                .font(.system(size: Theme.tMeta, weight: .medium))
-                .foregroundStyle(Theme.textSecondary(for: scheme))
+                .foregroundStyle(Theme.textTertiary(for: scheme))
+            Text(count == 1
+                ? "1 recent copy couldn't be captured — the clipboard changed before we could read it."
+                : "\(count) recent copies couldn't be captured — the clipboard changed before we could read them."
+            )
+            .font(.system(size: Theme.tMeta, weight: .medium))
+            .foregroundStyle(Theme.textSecondary(for: scheme))
             Spacer(minLength: 8)
             Text("Latest copy saved")
                 .font(.system(size: Theme.tMeta, weight: .semibold))
@@ -657,6 +680,75 @@ struct MissedCopiesBadge: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Theme.textTertiary(for: scheme).opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(Theme.hairline(for: scheme).opacity(0.6), lineWidth: 1)
+                )
+        )
+    }
+}
+
+/// Shown while captured items are being processed and persisted in the
+/// background. Dismisses automatically when the queue drains.
+struct CaptureProcessingBanner: View {
+    let depth: Int
+    let scheme: ColorScheme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+            Text(depth == 1
+                ? "Saving your copied item…"
+                : "Saving your copied items… (\(depth) remaining)")
+            .font(.system(size: Theme.tMeta, weight: .medium))
+            .foregroundStyle(Theme.textSecondary(for: scheme))
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Theme.accent.opacity(0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(Theme.hairline(for: scheme).opacity(0.6), lineWidth: 1)
+                )
+        )
+    }
+}
+
+/// Shown when persistence failed after all retries. Explains the problem in
+/// plain language and offers a recovery action.
+struct CaptureFailureBanner: View {
+    let error: String
+    let retryable: Bool
+    let scheme: ColorScheme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.octagon")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.warn(for: scheme))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("We couldn't save some copied items.")
+                    .font(.system(size: Theme.tMeta, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary(for: scheme))
+                Text(retryable
+                    ? "We're trying again automatically. If this keeps happening, check available storage."
+                    : "Some copied items couldn't be saved. Please check available storage and try copying them again."
+                )
+                .font(.system(size: Theme.tMeta, weight: .regular))
+                .foregroundStyle(Theme.textTertiary(for: scheme))
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 7)
                 .fill(Theme.warn(for: scheme).opacity(0.12))

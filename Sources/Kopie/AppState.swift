@@ -50,6 +50,11 @@ final class AppState: ObservableObject {
     private lazy var historyExporter = HistoryExporter(store: store, writer: writer)
     private let pipeline: CapturePipeline
     private let restoreSVC: RestoreService
+    /// Bounded queue holding captured clipboard items awaiting background processing.
+    /// Decouples the monitor's change detection from slow DB/disk writes.
+    private let captureQueue: CaptureQueue
+    /// Serial background processor that dequeues, persists, and reports outcomes.
+    private let captureProcessor: CaptureProcessor
     /// IUO: assigned once in `init`, right after the monitor is created. The
     /// read-gate closure passed to the monitor's initializer captures `self`,
     /// so every stored property must be provably initialized by then — an
@@ -69,6 +74,23 @@ final class AppState: ObservableObject {
 
     /// Live progress of the OCR backfill run. Published so the Settings UI can observe it.
     @Published var ocrBackfillProgress: OcrBackfill.Progress? = nil
+
+    /// Current depth of the capture queue — how many items are waiting to be processed.
+    /// Published so the UI can show "Saving your copied items..." while non-empty.
+    @Published public private(set) var queueDepth: Int = 0
+
+    /// Current capture pipeline status, for user-facing feedback.
+    @Published public private(set) var captureStatus: CaptureStatus = .idle
+
+    /// User-facing capture status.
+    public enum CaptureStatus: Equatable {
+        /// Nothing pending.
+        case idle
+        /// Items are queued and being processed in the background.
+        case processing(queueDepth: Int)
+        /// Persistence failed after retries; user action may be needed.
+        case failed(error: String, retryable: Bool)
+    }
 
     nonisolated(unsafe) private var ocrBackfillTimer: Timer?
     /// S-013 interaction recency for the capture read gate. Read and touched
@@ -166,22 +188,33 @@ final class AppState: ObservableObject {
         let restore = RestoreService()
         self.pipeline = pipeline; self.restoreSVC = restore
         self.job = RetentionJob(store: store)
+
+        // --- New capture pipeline: queue + background processor ---
+        let captureQueue = CaptureQueue(maxDepth: 1000)
+        let captureProcessor = CaptureProcessor(queue: captureQueue, pipeline: pipeline)
+        self.captureQueue = captureQueue
+        self.captureProcessor = captureProcessor
+
         let monitor = ClipboardMonitor(readChangeCount: { NSPasteboard.general.changeCount },
                                        reader: { ClipboardReader.read() },
-                                       handler: { [weak pipeline, weak self] c in
-            guard let pipeline, let self else { return }
-            let cfg = SettingsStore.shared.captureConfig
-            let (r, ocrData) = pipeline.processWithPendingOCR(c, config: cfg)
-            if let data = ocrData, let id = r.capturedID {
-                self.ocrQueue.async {
-                    let text = ImageTextRecognizer.recognizeText(in: data)
-                    DispatchQueue.main.async {
-                        _ = self.store.updateOCR(id, text)
-                        NotificationCenter.default.post(name: .kopieStoreChanged, object: nil)
-                    }
-                }
+                                       handler: { [weak self] c in
+            guard let self else { return }
+            // Enqueue for background processing — never block the monitor's
+            // detection loop with slow DB/disk writes.
+            let capture = PendingCapture(
+                sequence: Int64(self.captureQueue.depth),
+                capturedAt: .now,
+                content: c
+            )
+            let enqueued = self.captureQueue.enqueue(capture)
+            ClipboardDiagnostics.shared.recordItemCaptured()
+            ClipboardDiagnostics.shared.recordItemEnqueued()
+            if !enqueued {
+                // Queue was full, oldest dropped — record for diagnostics.
+                ClipboardDiagnostics.shared.recordQueueDrop()
             }
-            if case .captured = r { NotificationCenter.default.post(name: .kopieStoreChanged, object: nil) }
+            self.updateQueueDepth()
+            self.captureStatus = .processing(queueDepth: self.captureQueue.depth)
         },
                                        readGate: { [weak self] in
             guard let self else { return true }
@@ -189,10 +222,22 @@ final class AppState: ObservableObject {
             return self.captureActivity.mayRead()
         })
         self.monitor = monitor
+
+        // Processor outcome: handle on main thread (store access, notifications, UI state).
+        captureProcessor.onOutcome = { [weak self] outcome in
+            guard let self else { return }
+            self.handleCaptureOutcome(outcome)
+        }
+
+        // Start the background processor so queued items are drained.
+        captureProcessor.start()
+
         // Anomaly sink fires on the monitor's tick thread — hop to main so the
         // published badge state is only ever mutated on the main actor (S-012).
         monitor.onAnomaly = { [weak self] n in
             DispatchQueue.main.async { self?.missedCopies = n }
+            // Record unrecoverable losses (pasteboard already overwritten).
+            ClipboardDiagnostics.shared.recordUnrecoverable()
         }
         self.isPaused = settings.monitorPaused
         self.excludedApps = settings.excludedApps
@@ -422,6 +467,67 @@ final class AppState: ObservableObject {
 
     /// Clears the on-screen badge (popover onDisappear).
     func dismissMissedBadge() { missedCopies = 0 }
+
+    /// Handles a capture outcome delivered by the background processor on the main thread.
+    /// Updates UI state, posts store-change notifications, and runs async OCR for images.
+    private func handleCaptureOutcome(_ outcome: CaptureOutcome) {
+        switch outcome {
+        case .saved(let id, let ocrData):
+            // Persistence succeeded — refresh UI and notify observers.
+            refresh()
+            NotificationCenter.default.post(name: .kopieStoreChanged, object: nil)
+            // Async OCR for image captures.
+            if let data = ocrData, SettingsStore.shared.ocrImages {
+                ocrQueue.async {
+                    let text = ImageTextRecognizer.recognizeText(in: data)
+                    DispatchQueue.main.async {
+                        _ = self.store.updateOCR(id, text)
+                        NotificationCenter.default.post(name: .kopieStoreChanged, object: nil)
+                    }
+                }
+            }
+            // Update processing status: drain queue depth and go idle when empty.
+            self.updateQueueDepth()
+            if self.captureQueue.depth == 0 {
+                self.captureStatus = .idle
+            } else {
+                self.captureStatus = .processing(queueDepth: self.captureQueue.depth)
+            }
+
+        case .recopied(_):
+            // Duplicate — update recopy timestamp, refresh UI.
+            refresh()
+            NotificationCenter.default.post(name: .kopieStoreChanged, object: nil)
+            self.updateQueueDepth()
+            if self.captureQueue.depth == 0 {
+                self.captureStatus = .idle
+            } else {
+                self.captureStatus = .processing(queueDepth: self.captureQueue.depth)
+            }
+
+        case .skipped:
+            // Intentionally not saved — just update queue depth.
+            self.updateQueueDepth()
+            if self.captureQueue.depth == 0 {
+                self.captureStatus = .idle
+            } else {
+                self.captureStatus = .processing(queueDepth: self.captureQueue.depth)
+            }
+
+        case .failed(let error):
+            // Persistence failed after all retries. Surface to the user.
+            self.captureStatus = .failed(error: error, retryable: false)
+            // Keep the item count visible so the user knows something is pending.
+            self.updateQueueDepth()
+        }
+    }
+
+    /// Refreshes the published `queueDepth` from the capture queue.
+    private func updateQueueDepth() {
+        let d = captureQueue.depth
+        queueDepth = d
+        ClipboardDiagnostics.shared.setQueueDepth(d)
+    }
 
     func pauseMonitoring() {
         let wasRunning = !isPaused

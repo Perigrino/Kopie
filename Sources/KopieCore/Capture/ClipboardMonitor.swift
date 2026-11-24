@@ -89,9 +89,12 @@ public final class ClipboardMonitor: @unchecked Sendable {
         timer = nil
     }
 
-    /// Poll cadence. 0.15s keeps up with copies ≥ 300ms apart (S-010 harness)
-    /// while idling at one integer compare per tick.
-    static let tickInterval: TimeInterval = 0.15
+    /// Poll cadence. 0.05s (20 checks/sec) keeps up with copies ≥ 100ms apart
+    /// while idling at one integer compare per tick. Detection is deliberately
+    /// decoupled from slow processing: `tick()` captures and enqueues, then
+    /// returns immediately, so a slow image write can never block detection of
+    /// the next change.
+    static let tickInterval: TimeInterval = 0.05
 
     /// Legacy pre-write suppression: bump immediately before our own
     /// pasteboard write on the same run-loop turn.
